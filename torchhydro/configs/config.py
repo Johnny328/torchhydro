@@ -162,6 +162,7 @@ def default_config_file():
             #     "ET": "modiset4camels",
             # },
             "constant_rm_nan": True,
+            "global_rm_nan": True,
             # if constant_only, we will only use constant data as DL models' input: this is only for dpl models now
             "constant_only": False,
             # more other cols, use dict to express!
@@ -1041,7 +1042,7 @@ def update_cfg(cfg_file, new_args):
         cfg_file["data_cfgs"]["batch_size"] = batch_size
         cfg_file["training_cfgs"]["batch_size"] = batch_size
     if new_args.min_time_unit is not None:
-        if new_args.min_time_unit not in ["h", "D"]:
+        if new_args.min_time_unit not in ["h", "D","ME"]:
             raise ValueError("min_time_unit must be 'h' (HOURLY) or 'D' (DAILY)")
         cfg_file["data_cfgs"]["min_time_unit"] = new_args.min_time_unit
     if new_args.min_time_interval is not None:

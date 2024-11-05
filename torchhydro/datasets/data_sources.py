@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 from hydroutils import hydro_time
 from hydrodataset import Camels
-from hydrodatasource.reader.data_source import SelfMadeHydroDataset
+from hydrodatasource.reader.data_source import SelfMadeHydroDataset,LongTermDataset
 
 
 from torchhydro import CACHE_DIR, SETTING
@@ -726,4 +726,5 @@ data_sources_dict = {
     "modiset4camels": ModisEt4Camels,
     "nldas4camels": Nldas4Camels,
     "smap4camels": Smap4Camels,
+    "longtermdataset": LongTermDataset,
 }

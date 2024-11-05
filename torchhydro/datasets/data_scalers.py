@@ -57,6 +57,7 @@ class ScalerHub(object):
         target_vars: np.ndarray,
         relevant_vars: np.ndarray,
         constant_vars: Optional[np.ndarray] = None,
+        golbal_vars: Optional[np.ndarray] = None,
         data_cfgs: Optional[dict] = None,
         is_tra_val_te: Optional[str] = None,
         data_source: object = None,
@@ -83,7 +84,7 @@ class ScalerHub(object):
             other optional parameters for ScalerHub
         """
         self.data_cfgs = data_cfgs
-        norm_keys = ["target_vars", "relevant_vars", "constant_vars"]
+        norm_keys = ["target_vars", "relevant_vars", "constant_vars", "global_vars"]
         norm_dict = {}
         scaler_type = data_cfgs["scaler"]
         if scaler_type == "DapengScaler":
@@ -100,13 +101,14 @@ class ScalerHub(object):
                 gamma_norm_cols=gamma_norm_cols,
                 pbm_norm=pbm_norm,
                 data_source=data_source,
+                golbal_vars=golbal_vars,
             )
-            x, y, c = scaler.load_data()
+            x, y, c, g = scaler.load_data()
             self.target_scaler = scaler
 
         elif scaler_type in SCALER_DICT.keys():
             # TODO: not fully tested, espacially for pbm models
-            all_vars = [target_vars, relevant_vars, constant_vars]
+            all_vars = [target_vars, relevant_vars, constant_vars, golbal_vars]
             for i in range(len(all_vars)):
                 data_tmp = all_vars[i]
                 scaler = SCALER_DICT[scaler_type]()
@@ -160,22 +162,23 @@ class ScalerHub(object):
             x_ = norm_dict["relevant_vars"]
             y_ = norm_dict["target_vars"]
             c_ = norm_dict["constant_vars"]
+            g_ = norm_dict["global_vars"]
             # TODO: need more test for real data
             x = xr.DataArray(
                 x_,
                 coords={
-                    "basin": target_vars.coords["basin"],
-                    "time": target_vars.coords["time"],
-                    "variable": target_vars.coords["variable"],
+                    "basin": relevant_vars.coords["basin"],
+                    "time": relevant_vars.coords["time"],
+                    "variable": relevant_vars.coords["variable"],
                 },
                 dims=["basin", "time", "variable"],
             )
             y = xr.DataArray(
                 y_,
                 coords={
-                    "basin": relevant_vars.coords["basin"],
-                    "time": relevant_vars.coords["time"],
-                    "variable": relevant_vars.coords["variable"],
+                    "basin": target_vars.coords["basin"],
+                    "time": target_vars.coords["time"],
+                    "variable": target_vars.coords["variable"],
                 },
                 dims=["basin", "time", "variable"],
             )
@@ -185,7 +188,16 @@ class ScalerHub(object):
                     "basin": constant_vars.coords["basin"],
                     "variable": constant_vars.coords["variable"],
                 },
-                dims=["basin", "variable"],
+                dims=["variable", "basin"],
+            )
+            g = xr.DataArray(
+                g_,
+                coords={
+                    "basin": golbal_vars.coords["basin"],
+                    "time": golbal_vars.coords["time"],
+                    "variable": golbal_vars.coords["variable"],
+                },
+                dims=["basin", "time", "variable"],
             )
         else:
             raise NotImplementedError(
@@ -195,6 +207,7 @@ class ScalerHub(object):
         self.x = x
         self.y = y
         self.c = c
+        self.g = g
 
 
 class DapengScaler(object):
@@ -210,6 +223,7 @@ class DapengScaler(object):
         gamma_norm_cols=None,
         pbm_norm=False,
         data_source: object = None,
+        golbal_vars: np.array = None,
     ):
         """
         The normalization and denormalization methods from Dapeng's 1st WRR paper.
@@ -254,6 +268,7 @@ class DapengScaler(object):
         self.data_target = target_vars
         self.data_forcing = relevant_vars
         self.data_attr = constant_vars
+        self.data_global = golbal_vars
         self.data_cfgs = data_cfgs
         self.t_s_dict = wrap_t_s_dict(data_cfgs, is_tra_val_te)
         self.data_other = other_vars
@@ -289,19 +304,12 @@ class DapengScaler(object):
 
     @property
     def mean_prcp(self):
-        """This property is used to be divided by streamflow to normalize streamflow,
-        hence, its unit is same as streamflow
-
-        Returns
-        -------
-        np.ndarray
-            mean_prcp with the same unit as streamflow
-        """
-        final_unit = self.data_target.attrs["units"]["streamflow"]
-        mean_prcp = self.data_source.read_mean_prcp(
-            self.t_s_dict["sites_id"], unit=final_unit
+        return (
+            self.data_source.read_mean_prcp(self.t_s_dict["sites_id"])
+            .to_array()
+            .to_numpy()
+            .T  # TODO: check why T is needed
         )
-        return mean_prcp.to_array().transpose("basin", "variable").to_numpy()
 
     def inverse_transform(self, target_values):
         """
@@ -387,6 +395,12 @@ class DapengScaler(object):
             var = attr_lst[k]
             stat_dict[var] = cal_stat(attr_data.sel(variable=var).to_numpy())
 
+        # global data
+        global_data = self.data_global
+        global_lst = list(global_data.coords["variable"].values)
+        for k in range(len(global_lst)):
+            var = global_lst[k]
+            stat_dict[var] = cal_stat(global_data.sel(variable=var).to_numpy())
         return stat_dict
 
     def get_data_obs(self, to_norm: bool = True) -> np.array:
@@ -458,6 +472,30 @@ class DapengScaler(object):
         )
         return data
 
+    def get_data_global(self, to_norm=True) -> np.array:
+        """
+        Get global data
+
+        Parameters
+        ----------
+        rm_nan
+            if true, fill NaN value with 0
+        to_norm
+            if true, perform normalization
+
+        Returns
+        -------
+        np.array
+            the global data for modeling
+        """
+        stat_dict = self.stat_dict
+        var_lst = self.data_global.coords["variable"].values
+        data = self.data_global
+        data = _trans_norm(
+            data, var_lst, stat_dict, log_norm_cols=self.log_norm_cols, to_norm=to_norm
+        )
+        return data
+
     def get_data_const(self, to_norm=True) -> np.array:
         """
         Attr data and normalization
@@ -490,8 +528,10 @@ class DapengScaler(object):
             x: 3-d  gages_num*time_num*var_num
             y: 3-d  gages_num*time_num*1
             c: 2-d  gages_num*var_num
+            g: 3-d  gages_num*time_num*var_num
         """
         x = self.get_data_ts()
         y = self.get_data_obs()
         c = self.get_data_const()
-        return x, y, c
+        g = self.get_data_global()
+        return x, y, c, g
