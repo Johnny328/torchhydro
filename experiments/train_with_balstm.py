@@ -4,36 +4,37 @@ from torchhydro import SETTING
 from torchhydro.configs.config import cmd, default_config_file, update_cfg
 from torchhydro.trainers.trainer import train_and_evaluate
 
-basins = pd.read_excel("/home/yichengsun/data/basin_list.xlsx").values
+basins = pd.read_csv("/home/yichengsun/data/basin_list.csv").values
 basins = [item for sublist in basins for item in sublist]
 
-var_t =[
-        "d2m",
-        "pev",
-        "ro",
-        "slhf",
-        "sp",
-        "sro",
-        "swvl",
-        "tp",
-        "u10",
-        "t2m",
-        "v10",
-        "sd",
-        "sshf",
-    ]
+var_t = [
+    "d2m",
+    "pev",
+    "ro",
+    "slhf",
+    "sp",
+    "sro",
+    "swvl",
+    "tp",
+    "u10",
+    "t2m",
+    "v10",
+    "sd",
+    "sshf",
+]
 var_c = [
-        "sgr_dk_sav",
-        "glc_pc_s06",
-        "glc_pc_s07",
-        "nli_ix_sav",
-        "glc_pc_s04",
-        "glc_pc_s05",
-        "glc_pc_s02",
-        "glc_pc_s03",
-        "glc_pc_s01",
-        "pet_mm_syr",
-    ]
+    "sgr_dk_sav",
+    "glc_pc_s06",
+    "glc_pc_s07",
+    "nli_ix_sav",
+    "glc_pc_s04",
+    "glc_pc_s05",
+    "glc_pc_s02",
+    "glc_pc_s03",
+    "glc_pc_s01",
+    "pet_mm_syr",
+]
+
 
 def create_config_LongTerm():
     project_name = os.path.join("train_with_LongTerm", "balstm")
