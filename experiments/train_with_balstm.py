@@ -7,6 +7,33 @@ from torchhydro.trainers.trainer import train_and_evaluate
 basins = pd.read_excel("/home/yichengsun/data/basin_list.xlsx").values
 basins = [item for sublist in basins for item in sublist]
 
+var_t =[
+        "d2m",
+        "pev",
+        "ro",
+        "slhf",
+        "sp",
+        "sro",
+        "swvl",
+        "tp",
+        "u10",
+        "t2m",
+        "v10",
+        "sd",
+        "sshf",
+    ]
+var_c = [
+        "sgr_dk_sav",
+        "glc_pc_s06",
+        "glc_pc_s07",
+        "nli_ix_sav",
+        "glc_pc_s04",
+        "glc_pc_s05",
+        "glc_pc_s02",
+        "glc_pc_s03",
+        "glc_pc_s01",
+        "pet_mm_syr",
+    ]
 
 def create_config_LongTerm():
     project_name = os.path.join("train_with_LongTerm", "balstm")
@@ -27,7 +54,7 @@ def create_config_LongTerm():
             "input_size_dyn": 13,
             "input_size_glo": 106,
             "output_size": 1,
-            "input_size_sta": 195,
+            "input_size_sta": len(var_c),  # len(var_c) max 195
         },
         model_loader={"load_way": "best"},
         gage_id=basins,
@@ -36,33 +63,8 @@ def create_config_LongTerm():
         forecast_length=12,
         min_time_unit="ME",
         min_time_interval=1,
-        var_t=[
-            "d2m",
-            "pev",
-            "ro",
-            "slhf",
-            "sp",
-            "sro",
-            "swvl",
-            "tp",
-            "u10",
-            "t2m",
-            "v10",
-            "sd",
-            "sshf",
-        ],
-        var_c=[
-            "sgr_dk_sav",
-            "glc_pc_s06",
-            "glc_pc_s07",
-            "nli_ix_sav",
-            "glc_pc_s04",
-            "glc_pc_s05",
-            "glc_pc_s02",
-            "glc_pc_s03",
-            "glc_pc_s01",
-            "pet_mm_syr",
-        ],
+        var_t=var_t,
+        var_c=var_c,
         var_out=["streamflow"],
         dataset="BALSTMDataset",
         sampler=None,
@@ -79,7 +81,6 @@ def create_config_LongTerm():
         lr_scheduler={"lr": 0.0001},
         which_first_tensor="batch",
         rolling=False,
-        long_seq_pred=True,
         calc_metrics=True,
         early_stopping=True,
         patience=1,

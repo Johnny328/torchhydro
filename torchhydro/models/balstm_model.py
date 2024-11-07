@@ -52,7 +52,7 @@ class SingleBALSTM(nn.Module):
         # 创建可学习参数的张量
         self.weight_ih = nn.Parameter(torch.FloatTensor(input_size_dyn, 3 * hidden_size))
         self.weight_hh = nn.Parameter(torch.FloatTensor(hidden_size, 3 * hidden_size))
-        self.weight_sh = nn.Parameter(torch.FloatTensor(10, 2 * hidden_size))
+        self.weight_sh = nn.Parameter(torch.FloatTensor(input_size_sta, 2 * hidden_size))
         self.weight_gh = nn.Parameter(torch.FloatTensor(input_size_glo, hidden_size))
         self.bias = nn.Parameter(torch.FloatTensor(3 * hidden_size))
         self.bias_s = nn.Parameter(torch.FloatTensor(2 * hidden_size))
