@@ -1,70 +1,80 @@
 """
 Author: Wenyu Ouyang
-Date: 2024-05-20 10:40:46
-LastEditTime: 2024-05-27 15:49:30
+Date: 2024-04-17 12:55:24
+LastEditTime: 2024-05-27 10:10:35
 LastEditors: Wenyu Ouyang
-Description: 
-FilePath: \torchhydro\experiments\train_with_gpm_dis.py
+Description:
+FilePath: \torchhydro\tests\test_train_seq2seq.py
 Copyright (c) 2021-2024 Wenyu Ouyang. All rights reserved.
 """
 
 import logging
 import os.path
 import pathlib
+
 import pandas as pd
+import pytest
+import hydrodatasource.configs.config as hdscc
+import xarray as xr
 import torch.multiprocessing as mp
+
 from torchhydro.configs.config import cmd, default_config_file, update_cfg
-from torchhydro.trainers.trainer import train_and_evaluate
 from torchhydro.trainers.deep_hydro import train_worker
+from torchhydro.trainers.trainer import train_and_evaluate
+
+# from torchhydro.trainers.trainer import train_and_evaluate, ensemble_train_and_evaluate
 
 logging.basicConfig(level=logging.INFO)
 for logger_name in logging.root.manager.loggerDict:
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
 
-show = pd.read_csv("data/basin_id(498+24).csv", dtype={"id": str})
+show = pd.read_csv(
+    os.path.join(pathlib.Path(__file__).parent.parent, "data/basin_us.csv"),
+    dtype={"id": str},
+)
 gage_id = show["id"].values.tolist()
+# gage_id = ["songliao_21401550"]
 
 
-def main():
-    config_data = create_config()
-    test_seq2seq(config_data)
-
-
-def create_config():
-    project_name = "train_with_gpm_dis/ex1"
+def config():
+    # 设置测试所需的项目名称和默认配置文件
+    project_name = os.path.join(
+        # "train_with_era5land", "ex4_0826_819basins_era5lad_fix_streamflow"
+        "train_with_era5land",
+        "ex5_1031_us_basins_era5land_update_time",
+    )
     config_data = default_config_file()
+
+    # 填充测试所需的命令行参数
     args = cmd(
         sub=project_name,
-        # TODO: Update the source_path to the correct path
         source_cfgs={
-            "source_name": "selfmadehydrodataset",
-            "source_path": {
-                "forcing": "basins-origin/hour_data/1h/mean_data/data_forcing_gpm_streamflow",
-                "target": "basins-origin/hour_data/1h/mean_data/data_forcing_gpm_streamflow",
-                "attributes": "basins-origin/attributes.nc",
-            },
-            "other_settings": {"time_unit": ["3h"]},
+            "source": "HydroMean",
+            "source_path": "/ftproot/basins-interim/",
         },
-        ctx=[0, 1, 2],
+        ctx=[1],
         model_name="Seq2Seq",
         model_hyperparam={
-            "input_size": 17,
+            "en_input_size": 17,
+            "de_input_size": 18,
             "output_size": 2,
             "hidden_size": 256,
-            "forecast_length": 3,
+            "forecast_length": 56,
             "prec_window": 1,
+            "teacher_forcing_ratio": 0.5,
         },
         model_loader={"load_way": "best"},
-        # gage_id=gage_id,
-        gage_id=["21400800", "21401550"],
-        batch_size=1024,
+        gage_id=gage_id,
+        # gage_id=["21400800", "21401550", "21401300", "21401900"],
+        batch_size=256,
         forecast_history=240,
-        forecast_length=3,
+        forecast_length=56,
         min_time_unit="h",
         min_time_interval=3,
         var_t=[
-            "gpm_tp",
+            # "precipitationCal",
+            "total_precipitation_hourly",  # ear5-land tp
             "sm_surface",
         ],
         var_c=[
@@ -86,12 +96,13 @@ def create_config():
         ],
         var_out=["streamflow", "sm_surface"],
         dataset="Seq2SeqDataset",
+        sampler="HydroSampler",
         scaler="DapengScaler",
-        train_epoch=2,
+        train_epoch=100,
         save_epoch=1,
-        train_period=[("2016-06-01-01", "2023-12-01-01")],
-        test_period=[("2015-06-01-01", "2016-06-01-01")],
-        valid_period=[("2015-06-01-01", "2016-06-01-01")],
+        train_period=[("2015-06-01-01", "2022-11-01-01")],
+        test_period=[("2022-11-01-01", "2023-11-01-01")],
+        valid_period=[("2022-11-01-01", "2023-11-01-01")],
         loss_func="MultiOutLoss",
         loss_param={
             "loss_funcs": "RMSESum",
@@ -99,27 +110,30 @@ def create_config():
             "device": [1],
             "item_weight": [0.8, 0.2],
         },
+        train_mode=False,
         opt="Adam",
         lr_scheduler={
-            "lr": 0.003,
-            "lr_factor": 0.96,
+            "lr": 0.0001,
+            "lr_factor": 0.9,
         },
         which_first_tensor="batch",
-        static=False,
+        rolling=False,
+        long_seq_pred=False,
+        calc_metrics=False,
         early_stopping=True,
-        patience=8,
-        model_type="DDP_MTL",
+        # ensemble=True,
+        # ensemble_items={
+        #     "batch_sizes": [256, 512],
+        # },
+        patience=10,
+        model_type="MTL",
     )
 
+    # 更新默认配置
     update_cfg(config_data, args)
 
     return config_data
 
 
-def test_seq2seq(config):
-    world_size = len(config["training_cfgs"]["device"])
-    mp.spawn(train_worker, args=(world_size, config), nprocs=world_size, join=True)
-
-
-if __name__ == "__main__":
-    main()
+configs = config()
+train_and_evaluate(configs)

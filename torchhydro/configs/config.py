@@ -287,8 +287,11 @@ def default_config_file():
             "metrics": ["NSE", "RMSE", "R2", "KGE", "FHV", "FLV"],
             "fill_nan": "no",
             "explainer": None,
-            "rolling": None,
-            "long_seq_pred": True,
+            # rolling means testdataloader will sample data with overlap time
+            # rolling is False meaning each time has only one output for one basin one variable
+            # rolling is True and the time_window must be prec_window+horizon now!
+            # for example, data is |1|2|3|4|  time_window=2 then the samples are |1|2|, |2|3| and |3|4|
+            "rolling": False,
             "calc_metrics": True,
         },
     }
@@ -353,7 +356,6 @@ def cmd(
     fill_nan=None,
     explainer=None,
     rolling=None,
-    long_seq_pred=None,
     calc_metrics=None,
     start_epoch=1,
     stat_dict_file=None,
@@ -746,13 +748,6 @@ def cmd(
         type=int,
     )
     parser.add_argument(
-        "--long_seq_pred",
-        dest="long_seq_pred",
-        help="if True, direct, one-step, long-term sequence prediction",
-        default=long_seq_pred,
-        type=bool,
-    )
-    parser.add_argument(
         "--calc_metrics",
         dest="calc_metrics",
         help="if False, calculate valid loss only",
@@ -984,8 +979,6 @@ def update_cfg(cfg_file, new_args):
         cfg_file["data_cfgs"]["constant_only"] = bool(new_args.constant_only != 0)
     else:
         cfg_file["data_cfgs"]["target_as_input"] = True
-    if new_args.long_seq_pred is not None:
-        cfg_file["evaluation_cfgs"]["long_seq_pred"] = new_args.long_seq_pred
     if new_args.calc_metrics is not None:
         cfg_file["evaluation_cfgs"]["calc_metrics"] = new_args.calc_metrics
     if new_args.train_epoch is not None:
@@ -1031,10 +1024,6 @@ def update_cfg(cfg_file, new_args):
         if "prec_window" in new_args.model_hyperparam.keys():
             cfg_file["data_cfgs"]["prec_window"] = new_args.model_hyperparam[
                 "prec_window"
-            ]
-        if "en_output_size" in new_args.model_hyperparam.keys():
-            cfg_file["data_cfgs"]["en_output_size"] = new_args.model_hyperparam[
-                "en_output_size"
             ]
     if new_args.batch_size is not None:
         # raise AttributeError("Please set the batch_size!!!")
