@@ -1,7 +1,7 @@
 """
 Author: Wenyu Ouyang
 Date: 2024-04-08 18:17:44
-LastEditTime: 2024-11-05 09:21:24
+LastEditTime: 2024-11-12 20:13:17
 LastEditors: Wenyu Ouyang
 Description: normalize the data
 FilePath: \torchhydro\torchhydro\datasets\data_scalers.py
@@ -162,7 +162,17 @@ class ScalerHub(object):
             x_ = norm_dict["relevant_vars"]
             y_ = norm_dict["target_vars"]
             c_ = norm_dict["constant_vars"]
-            g_ = norm_dict["global_vars"]
+            if g is not None:
+                g_ = norm_dict["global_vars"]
+                g = xr.DataArray(
+                    g_,
+                    coords={
+                        "basin": golbal_vars.coords["basin"],
+                        "time": golbal_vars.coords["time"],
+                        "variable": golbal_vars.coords["variable"],
+                    },
+                    dims=["basin", "time", "variable"],
+                )
             # TODO: need more test for real data
             x = xr.DataArray(
                 x_,
@@ -189,15 +199,6 @@ class ScalerHub(object):
                     "variable": constant_vars.coords["variable"],
                 },
                 dims=["variable", "basin"],
-            )
-            g = xr.DataArray(
-                g_,
-                coords={
-                    "basin": golbal_vars.coords["basin"],
-                    "time": golbal_vars.coords["time"],
-                    "variable": golbal_vars.coords["variable"],
-                },
-                dims=["basin", "time", "variable"],
             )
         else:
             raise NotImplementedError(
@@ -395,12 +396,12 @@ class DapengScaler(object):
             var = attr_lst[k]
             stat_dict[var] = cal_stat(attr_data.sel(variable=var).to_numpy())
 
-        # global data
-        global_data = self.data_global
-        global_lst = list(global_data.coords["variable"].values)
-        for k in range(len(global_lst)):
-            var = global_lst[k]
-            stat_dict[var] = cal_stat(global_data.sel(variable=var).to_numpy())
+        if self.data_global is not None:
+            # global data
+            global_data = self.data_global
+            global_lst = list(global_data.coords["variable"].values)
+            for var in global_lst:
+                stat_dict[var] = cal_stat(global_data.sel(variable=var).to_numpy())
         return stat_dict
 
     def get_data_obs(self, to_norm: bool = True) -> np.array:
@@ -533,5 +534,7 @@ class DapengScaler(object):
         x = self.get_data_ts()
         y = self.get_data_obs()
         c = self.get_data_const()
-        g = self.get_data_global()
-        return x, y, c, g
+        if self.data_global is not None:
+            g = self.get_data_global()
+            return x, y, c, g
+        return x, y, c, None
