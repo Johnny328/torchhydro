@@ -3,11 +3,11 @@ import pandas as pd
 from torchhydro import SETTING
 from torchhydro.configs.config import cmd, default_config_file, update_cfg
 from torchhydro.trainers.trainer import train_and_evaluate
-
-basins = pd.read_csv("/home/yichengsun/data/basin_list.csv").values
+basins = pd.read_csv(os.path.join(SETTING["local_data_path"]["basins-longterm"], "basin_list.csv")).values
 basins = [item for sublist in basins for item in sublist]
-
+basins.sort()
 var_t = [
+    "tp",
     "d2m",
     "pev",
     "ro",
@@ -15,7 +15,6 @@ var_t = [
     "sp",
     "sro",
     "swvl",
-    "tp",
     "u10",
     "t2m",
     "v10",
@@ -37,7 +36,7 @@ var_c = [
 
 
 def create_config_LongTerm():
-    project_name = os.path.join("train_with_LongTerm", "balstm")
+    project_name = os.path.join("train_with_LongTerm", "3")
     config_data = default_config_file()
     args = cmd(
         sub=project_name,
@@ -70,20 +69,18 @@ def create_config_LongTerm():
         dataset="BALSTMDataset",
         sampler=None,
         scaler="DapengScaler",
-        train_epoch=1,
+        train_epoch=10,
         save_epoch=1,
-        train_period=["1951-01-01", "1970-12-31"],
-        test_period=["1971-01-01", "1972-10-31"],
-        # test_period=None,
-        # valid_period=["1961-01-01", "1963-12-31"],
-        valid_period=None,
+        train_period=["1981-01-01", "2000-12-31"],
+        test_period=["2001-01-01", "2002-10-31"],
+        valid_period=["2001-01-01", "2002-10-31"],
         loss_func="NSELoss",
         opt="Adam",
         lr_scheduler={"lr": 0.0001},
         which_first_tensor="batch",
         rolling=False,
         calc_metrics=True,
-        early_stopping=True,
+        early_stopping=False,
         patience=1,
         model_type="Normal",
     )
