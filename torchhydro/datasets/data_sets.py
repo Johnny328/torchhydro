@@ -741,25 +741,16 @@ class TransformerDataset(Seq2SeqDataset):
 class BALSTMDataset(BaseDataset):
     def __init__(self, data_cfgs, is_tra_val_te):
         super(BALSTMDataset, self).__init__(data_cfgs, is_tra_val_te)
-        self.data_cfgs = data_cfgs
-        if is_tra_val_te in {"train", "valid", "test"}:
-            self.is_tra_val_te = is_tra_val_te
-        else:
-            raise ValueError(
-                "'is_tra_val_te' must be one of 'train', 'valid' or 'test' "
-            )
-        # load and preprocess data
-        self._load_data()
 
     def __len__(self):
-        return len(self.x)
+        return self.num_samples
 
     def __getitem__(self, idx):
         basin, idx = self.lookup_table[idx]
         warmup_length = self.warmup_length
         x = self.x[basin, idx - warmup_length : idx + self.rho + self.horizon, :]
         y = self.y[basin, idx : idx + self.rho + self.horizon, :]
-        c = self.c[basin, :]
+        c = self.c[basin, :]    
         c = c.reshape(c.shape[0], -1).T
         xg = self.xg[basin, idx - warmup_length : idx + self.rho + self.horizon, :]
         return (
