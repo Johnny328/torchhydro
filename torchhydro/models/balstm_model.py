@@ -142,6 +142,3 @@ class SingleBALSTM(nn.Module):
             return h_n.transpose(1, 0), c_n.transpose(1, 0)
         else:
             return h_n, c_n
-
-def inverse_normalize(data, mean, std):
-    return data * std + mean
