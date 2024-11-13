@@ -5,13 +5,15 @@ from torchhydro.configs.config import cmd, default_config_file, update_cfg
 from torchhydro.trainers.trainer import train_and_evaluate
 
 basins = pd.read_csv(
-    os.path.join(SETTING["local_data_path"]["basins-longterm"], "basin_list.csv")
+    os.path.join(
+        SETTING["local_data_path"]["datasets-interim"], "attributes", "basin_list.csv"
+    )
 ).values
 basins = [item for sublist in basins for item in sublist]
 basins.sort()
 df = pd.read_csv(
     os.path.join(
-        SETTING["local_data_path"]["basins-longterm"],
+        SETTING["local_data_path"]["datasets-interim"],
         "attributes",
         "grdc_attributes1.csv",
     )
@@ -36,15 +38,15 @@ var_t = [
 
 
 def create_config_LongTerm():
-    project_name = os.path.join("train_with_LongTerm", "1")
+    project_name = os.path.join("train_with_LongTerm", "bs256,ep20,device1")
     config_data = default_config_file()
     args = cmd(
         sub=project_name,
         source_cfgs={
             "source_name": "longtermdataset",
-            "source_path": SETTING["local_data_path"]["basins-longterm"],
+            "source_path": SETTING["local_data_path"]["datasets-interim"],
         },
-        ctx=[0],
+        ctx=[2],
         model_name="BALSTM",
         model_hyperparam={
             "output_size": 1,
@@ -58,7 +60,7 @@ def create_config_LongTerm():
         },
         model_loader={"load_way": "best"},
         gage_id=basins,
-        batch_size=32,
+        batch_size=512,
         forecast_history=10,
         forecast_length=12,
         min_time_unit="ME",
@@ -69,14 +71,14 @@ def create_config_LongTerm():
         dataset="BALSTMDataset",
         sampler=None,
         scaler="DapengScaler",
-        train_epoch=100,
+        train_epoch=20,
         save_epoch=1,
         train_period=["1951-01-01", "2000-12-31"],
         test_period=["2001-01-01", "2002-10-31"],
         valid_period=["2001-01-01", "2002-10-31"],
         loss_func="NSELoss",
         opt="Adam",
-        lr_scheduler={"lr": 0.0001, "lr_factor": 0.1},
+        lr_scheduler={"lr": 0.001, "lr_factor": 0.1, "lr_patience": 1},
         which_first_tensor="batch",
         rolling=False,
         calc_metrics=True,
