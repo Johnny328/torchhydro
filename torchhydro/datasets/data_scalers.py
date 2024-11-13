@@ -57,7 +57,7 @@ class ScalerHub(object):
         target_vars: np.ndarray,
         relevant_vars: np.ndarray,
         constant_vars: Optional[np.ndarray] = None,
-        golbal_vars: Optional[np.ndarray] = None,
+        global_vars: Optional[np.ndarray] = None,
         data_cfgs: Optional[dict] = None,
         is_tra_val_te: Optional[str] = None,
         data_source: object = None,
@@ -101,14 +101,14 @@ class ScalerHub(object):
                 gamma_norm_cols=gamma_norm_cols,
                 pbm_norm=pbm_norm,
                 data_source=data_source,
-                golbal_vars=golbal_vars,
+                global_vars=global_vars,
             )
             x, y, c, g = scaler.load_data()
             self.target_scaler = scaler
 
         elif scaler_type in SCALER_DICT.keys():
             # TODO: not fully tested, espacially for pbm models
-            all_vars = [target_vars, relevant_vars, constant_vars, golbal_vars]
+            all_vars = [target_vars, relevant_vars, constant_vars, global_vars]
             for i in range(len(all_vars)):
                 data_tmp = all_vars[i]
                 scaler = SCALER_DICT[scaler_type]()
@@ -167,9 +167,9 @@ class ScalerHub(object):
                 g = xr.DataArray(
                     g_,
                     coords={
-                        "basin": golbal_vars.coords["basin"],
-                        "time": golbal_vars.coords["time"],
-                        "variable": golbal_vars.coords["variable"],
+                        "basin": global_vars.coords["basin"],
+                        "time": global_vars.coords["time"],
+                        "variable": global_vars.coords["variable"],
                     },
                     dims=["basin", "time", "variable"],
                 )
@@ -224,7 +224,7 @@ class DapengScaler(object):
         gamma_norm_cols=None,
         pbm_norm=False,
         data_source: object = None,
-        golbal_vars: np.array = None,
+        global_vars: np.array = None,
     ):
         """
         The normalization and denormalization methods from Dapeng's 1st WRR paper.
@@ -269,7 +269,7 @@ class DapengScaler(object):
         self.data_target = target_vars
         self.data_forcing = relevant_vars
         self.data_attr = constant_vars
-        self.data_global = golbal_vars
+        self.data_global = global_vars
         self.data_cfgs = data_cfgs
         self.t_s_dict = wrap_t_s_dict(data_cfgs, is_tra_val_te)
         self.data_other = other_vars
