@@ -15,7 +15,7 @@ def sample_data():
     target_vars = xr.DataArray(
         np.array([[[1.0], [2.0]], [[3.0], [4.0]]]),  # 替换为固定值
         coords={
-            "basin": ["6978250", "6976450"],
+            "basin": ["Caravan_6978250", "Caravan_6976450"],
             "time": pd.date_range("2018-08-01", periods=2, freq="MS"),
             "variable": ["streamflow"],
         },
@@ -24,7 +24,7 @@ def sample_data():
     relevant_vars = xr.DataArray(
         np.array([[[10, 20], [30, 40]], [[50, 60], [70, 80]]]),  # 替换为固定值
         coords={
-            "basin": ["6978250", "6976450"],
+            "basin": ["Caravan_6978250", "Caravan_6976450"],
             "time": pd.date_range("2018-08-01", periods=2, freq="MS"),
             "variable": ["tp", "d2m"],
         },
@@ -33,7 +33,7 @@ def sample_data():
     constant_vars = xr.DataArray(
         np.array([[10.0, 20.0], [30.0, 40.0]]),  # 替换为固定值
         coords={
-            "basin": ["6978250", "6976450"],
+            "basin": ["Caravan_6978250", "Caravan_6976450"],
             "variable": ["area", "ele_mt_smn"],
         },
         dims=["basin", "variable"],
@@ -41,7 +41,7 @@ def sample_data():
     global_vars = xr.DataArray(
         np.array([[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]]),
         coords={
-            "basin": ["6978250", "6976450"],
+            "basin": ["Caravan_6978250", "Caravan_6976450"],
             "time": pd.date_range("2018-08-01", periods=2, freq="MS"),
             "variable": ["A1", "A2"],
         },
@@ -58,7 +58,7 @@ def sample_data():
         "relevant_cols": ["tp", "d2m"],
         "constant_cols": ["area", "ele_mt_smn"],
         "global_cols": ["A1", "A2"],
-        "object_ids": ["6978250", "6976450"],
+        "object_ids": ["Caravan_6978250", "Caravan_6976450"],
         "t_range_train": [("2018-01-01", "2018-03-01")],  # not used but need to specify
         "t_range_test": [("2018-01-01", "2018-03-01")],  # not used but need to specify
     }
@@ -74,7 +74,7 @@ def test_dapeng_scaler_initialization(sample_data):
         data_cfgs=data_cfgs,
         is_tra_val_te="train",
         data_source=LongTermDataset(
-            data_path=SETTING["local_data_path"]["basins-longterm"], time_unit=["1MS"]
+            data_path=SETTING["local_data_path"]["datasets-interim"], time_unit=["1MS"]
         ), 
         global_vars=global_vars,
     )
@@ -94,7 +94,7 @@ def test_dapeng_scaler_cal_stat_all(sample_data):
         data_cfgs=data_cfgs,
         is_tra_val_te="train",
         data_source=LongTermDataset(
-            data_path=SETTING["local_data_path"]["basins-longterm"], time_unit=["1MS"]
+            data_path=SETTING["local_data_path"]["datasets-interim"], time_unit=["1MS"]
         ), 
         global_vars=global_vars,
     )
@@ -115,7 +115,7 @@ def test_dapeng_scaler_load_data_and_denorm(sample_data):
         data_cfgs=data_cfgs,
         is_tra_val_te="train",
         data_source=LongTermDataset(
-            data_path=SETTING["local_data_path"]["basins-longterm"], time_unit=["1MS"]
+            data_path=SETTING["local_data_path"]["datasets-interim"], time_unit=["1MS"]
         ), 
         global_vars=global_vars,
     )
