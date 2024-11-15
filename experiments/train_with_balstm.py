@@ -3,19 +3,19 @@ import pandas as pd
 from torchhydro import SETTING
 from torchhydro.configs.config import cmd, default_config_file, update_cfg
 from torchhydro.trainers.trainer import train_and_evaluate
-
-basins = pd.read_csv(
-    os.path.join(
-        SETTING["local_data_path"]["datasets-interim"], "attributes", "basin_list.csv"
-    )
-).values
-basins = [item for sublist in basins for item in sublist]
-basins.sort()
+gage_id_file=os.path.join(
+            SETTING["local_data_path"]["datasets-interim"],
+            "attributes",
+            "basin_list.csv",
+        )
+basins = (
+    pd.read_csv(gage_id_file).squeeze().tolist()
+)
 df = pd.read_csv(
     os.path.join(
         SETTING["local_data_path"]["datasets-interim"],
         "attributes",
-        "grdc_attributes1.csv",
+        "grdc_attributes.csv",
     )
 )
 df.drop(columns=["basin_id"], inplace=True)
@@ -36,9 +36,8 @@ var_t = [
     "sshf",
 ]
 
-
 def create_config_LongTerm():
-    project_name = os.path.join("train_with_LongTerm", "bs256,ep20,device1")
+    project_name = os.path.join("train_with_LongTerm", "test")
     config_data = default_config_file()
     args = cmd(
         sub=project_name,
@@ -71,7 +70,7 @@ def create_config_LongTerm():
         dataset="BALSTMDataset",
         sampler=None,
         scaler="DapengScaler",
-        train_epoch=20,
+        train_epoch=1,
         save_epoch=1,
         train_period=["1951-01-01", "2000-12-31"],
         test_period=["2001-01-01", "2002-10-31"],
@@ -83,8 +82,8 @@ def create_config_LongTerm():
         rolling=False,
         calc_metrics=True,
         metrics=["NSE", "RMSE", "R2"],
-        early_stopping=False,
-        patience=10,
+        early_stopping=True,
+        patience=2,
         model_type="Normal",
     )
     update_cfg(config_data, args)
