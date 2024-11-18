@@ -37,7 +37,7 @@ var_t = [
 ]
 
 def create_config_LongTerm():
-    project_name = os.path.join("train_with_LongTerm", "test")
+    project_name = os.path.join("train_with_LongTerm", "bs512,ep20,cuda2")
     config_data = default_config_file()
     args = cmd(
         sub=project_name,
@@ -70,7 +70,7 @@ def create_config_LongTerm():
         dataset="BALSTMDataset",
         sampler=None,
         scaler="DapengScaler",
-        train_epoch=1,
+        train_epoch=20,
         save_epoch=1,
         train_period=["1951-01-01", "2000-12-31"],
         test_period=["2001-01-01", "2002-10-31"],
@@ -82,7 +82,7 @@ def create_config_LongTerm():
         rolling=False,
         calc_metrics=True,
         metrics=["NSE", "RMSE", "R2"],
-        early_stopping=True,
+        early_stopping=False,
         patience=2,
         model_type="Normal",
     )
