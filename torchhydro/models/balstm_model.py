@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 class BALSTM(nn.Module):
-    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, num_layers, dropout=0.5):
+    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, num_layers, dropout=0.5,prec_window=0):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers

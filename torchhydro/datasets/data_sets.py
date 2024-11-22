@@ -743,9 +743,21 @@ class BALSTMDataset(BaseDataset):
         super(BALSTMDataset, self).__init__(data_cfgs, is_tra_val_te)
 
     def __len__(self):
-        return self.num_samples
+        return self.num_samples if self.train_mode else self.ngrid
+
 
     def __getitem__(self, idx):
+        if not self.train_mode:
+            x = self.x[idx, :, :]
+            y = self.y[idx, :, :]
+            c = self.c[idx, :]
+            c = c.reshape(c.shape[0], -1).T
+            xg = self.xg[idx, :, :]
+            return (
+                torch.from_numpy(c).float(),
+                torch.from_numpy(x).float(),
+                torch.from_numpy(xg).float(),
+            ), torch.from_numpy(y).float()
         basin, idx = self.lookup_table[idx]
         warmup_length = self.warmup_length
         x = self.x[basin, idx - warmup_length : idx + self.rho + self.horizon, :]

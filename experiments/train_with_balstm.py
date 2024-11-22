@@ -37,7 +37,7 @@ var_t = [
 ]
 
 def create_config_LongTerm():
-    project_name = os.path.join("train_with_LongTerm", "bs512,ep20,cuda2")
+    project_name = os.path.join("train_with_LongTerm", "test")
     config_data = default_config_file()
     args = cmd(
         sub=project_name,
@@ -73,8 +73,8 @@ def create_config_LongTerm():
         train_epoch=20,
         save_epoch=1,
         train_period=["1951-01-01", "2000-12-31"],
-        test_period=["2001-01-01", "2002-10-31"],
-        valid_period=["2001-01-01", "2002-10-31"],
+        test_period=["2001-01-01", "2012-10-31"],
+        valid_period=["2001-01-01", "2012-10-31"],
         loss_func="NSELoss",
         opt="Adam",
         lr_scheduler={"lr": 0.001, "lr_factor": 0.1, "lr_patience": 1},
