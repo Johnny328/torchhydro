@@ -740,11 +740,10 @@ class TransformerDataset(Seq2SeqDataset):
 
 class BALSTMDataset(BaseDataset):
     def __init__(self, data_cfgs, is_tra_val_te):
-        super(BALSTMDataset, self).__init__(data_cfgs, is_tra_val_te)
+        super().__init__(data_cfgs, is_tra_val_te)
 
     def __len__(self):
         return self.num_samples if self.train_mode else self.ngrid
-
 
     def __getitem__(self, idx):
         if not self.train_mode:
