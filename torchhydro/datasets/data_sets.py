@@ -902,3 +902,144 @@ class BALSTMDataset(BaseDataset):
                 data_forcing_ds, data_output_ds, data_attr_ds, global_data_ds
             )
         )
+
+class VanillaLSTMDataset(BaseDataset):
+    def __init__(self, data_cfgs, is_tra_val_te):
+        super().__init__(data_cfgs, is_tra_val_te)
+
+    def __len__(self):
+        return self.num_samples if self.train_mode else self.ngrid
+
+    def __getitem__(self, idx):
+        if not self.train_mode:
+            x = self.x[idx, :, :]
+            y = self.y[idx, :, :]
+            c = self.c[idx, :]
+            c = c.reshape(c.shape[0], -1).T
+            return (
+                torch.from_numpy(c).float(),
+                torch.from_numpy(x).float(),
+            ), torch.from_numpy(y).float()
+        basin, idx = self.lookup_table[idx]
+        warmup_length = self.warmup_length
+        x = self.x[basin, idx - warmup_length : idx + self.rho + self.horizon, :]
+        y = self.y[basin, idx : idx + self.rho + self.horizon, :]
+        c = self.c[basin, :]    
+        c = c.reshape(c.shape[0], -1).T
+        return (
+            torch.from_numpy(c).float(),
+            torch.from_numpy(x).float(),
+        ), torch.from_numpy(y).float()
+
+    def _load_data(self):
+        self._pre_load_data()
+        self._read_xyc()
+        norm_x, norm_y, norm_c = self._normalize()
+        self.x, self.y, self.c = self._kill_nan(norm_x, norm_y, norm_c)
+        self._trans2nparr()
+        self._create_lookup_table()
+
+    def _trans2nparr(self):
+        """To make __getitem__ more efficient,
+        we transform x, y, c to numpy array with shape (nsample, nt, nvar)
+        """
+        self.x = self.x.transpose("basin", "time", "variable").to_numpy()
+        self.y = self.y.transpose("basin", "time", "variable").to_numpy()
+        if self.c is not None and self.c.shape[-1] > 0:
+            self.c = self.c.transpose("basin", "variable").to_numpy()
+            self.c_origin = self.c_origin.transpose("basin", "variable").to_numpy()
+        self.x_origin = self.x_origin.transpose("basin", "time", "variable").to_numpy()
+        self.y_origin = self.y_origin.transpose("basin", "time", "variable").to_numpy()
+
+    def _normalize(self):
+        scaler_hub = ScalerHub(
+            self.y_origin,
+            self.x_origin,
+            self.c_origin,
+            data_cfgs=self.data_cfgs,
+            is_tra_val_te=self.is_tra_val_te,
+            data_source=self.data_source,
+        )
+        self.target_scaler = scaler_hub.target_scaler
+        return scaler_hub.x, scaler_hub.y, scaler_hub.c
+
+    def _kill_nan(self, x, y, c):
+        data_cfgs = self.data_cfgs
+        y_rm_nan = data_cfgs["target_rm_nan"]
+        x_rm_nan = data_cfgs["relevant_rm_nan"]
+        c_rm_nan = data_cfgs["constant_rm_nan"]
+        if x_rm_nan:
+            _fill_gaps_da(x, fill_nan="interpolate")
+            warn_if_nan(x)
+        if y_rm_nan:
+            _fill_gaps_da(y, fill_nan="interpolate")
+            warn_if_nan(y)
+        if c_rm_nan:
+            _fill_gaps_da(c, fill_nan="mean")
+            warn_if_nan(c)
+        warn_if_nan(x, nan_mode="all")
+        warn_if_nan(y, nan_mode="all")
+        warn_if_nan(c, nan_mode="all")
+        return x, y, c
+
+    def _to_dataarray_with_unit(
+        self, data_forcing_ds, data_output_ds, data_attr_ds
+    ):
+        # trans to dataarray to better use xbatch
+        if data_output_ds is not None:
+            data_output = self._trans2da_and_setunits(data_output_ds)
+        else:
+            data_output = None
+        if data_forcing_ds is not None:
+            data_forcing = self._trans2da_and_setunits(data_forcing_ds)
+        else:
+            data_forcing = None
+        if data_attr_ds is not None:
+            # firstly, we should transform some str type data to float type
+            data_attr = self._trans2da_and_setunits(data_attr_ds)
+        else:
+            data_attr = None
+        return data_forcing, data_output, data_attr
+
+    def _read_xyc(self):
+        """Read x, y, c and global data from data source.
+
+        Returns
+        -------
+        tuple[xr.Dataset, xr.Dataset, xr.Dataset, xr.Dataset]
+            x, y, c, global data
+        """
+        # Read x (forcing data)
+        data_forcing_ds_ = self.data_source.read_ts_xrdataset(
+            self.t_s_dict["sites_id"],
+            self.t_s_dict["t_final_range"],
+            self.data_cfgs["relevant_cols"],
+        )
+
+        # Read y (target/output data)
+        data_output_ds_ = self.data_source.read_ts_xrdataset(
+            self.t_s_dict["sites_id"],
+            self.t_s_dict["t_final_range"],
+            self.data_cfgs["target_cols"],
+        )
+
+        # Handle potential dict cases (unified time range for all basins)
+        if isinstance(data_output_ds_, dict) or isinstance(data_forcing_ds_, dict):
+            # data_forcing_ds_ = data_forcing_ds_[list(data_forcing_ds_.keys())[0]]
+            # data_output_ds_ = data_output_ds_[list(data_output_ds_.keys())[0]]
+            data_forcing_ds = data_forcing_ds_[list(data_forcing_ds_.keys())[0]]
+            data_output_ds = data_output_ds_[list(data_output_ds_.keys())[0]]
+
+        # Read c (constant/static data)
+        data_attr_ds = self.data_source.read_attr_xrdataset(
+            self.t_s_dict["sites_id"],
+            self.data_cfgs["constant_cols"],
+            all_number=True,
+        )
+
+        # ---- Transform data to xarray with units and convert to numpy ----
+        self.x_origin, self.y_origin, self.c_origin = (
+            self._to_dataarray_with_unit(
+                data_forcing_ds, data_output_ds, data_attr_ds
+            )
+        )

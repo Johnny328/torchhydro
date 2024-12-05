@@ -16,6 +16,7 @@ from torchhydro.datasets.data_sets import (
     Seq2SeqDataset,
     TransformerDataset,
     BALSTMDataset,
+    VanillaLSTMDataset,
 )
 
 
@@ -27,4 +28,5 @@ datasets_dict = {
     "Seq2SeqDataset": Seq2SeqDataset,
     "TransformerDataset":TransformerDataset,
     "BALSTMDataset": BALSTMDataset,
+    "VanillaLSTMDataset":VanillaLSTMDataset,
 }
