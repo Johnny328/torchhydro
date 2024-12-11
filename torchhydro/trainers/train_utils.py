@@ -130,7 +130,8 @@ def denormalize4eval(eval_dataloader, output, labels, rolling=False):
             dims=selected_data.dims,
             coords=selected_data.coords,
             attrs={"units": units},
-        )
+        ),
+        maxmin_norm_cols = target_scaler.maxmin_norm_cols
     )
     obss_xr = target_scaler.inverse_transform(
         xr.DataArray(
@@ -138,7 +139,8 @@ def denormalize4eval(eval_dataloader, output, labels, rolling=False):
             dims=selected_data.dims,
             coords=selected_data.coords,
             attrs={"units": units},
-        )
+        ),
+        maxmin_norm_cols = target_scaler.maxmin_norm_cols
     )
 
     return preds_xr, obss_xr

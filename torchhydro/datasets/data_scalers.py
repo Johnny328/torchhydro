@@ -99,6 +99,7 @@ class ScalerHub(object):
                 is_tra_val_te,
                 prcp_norm_cols=prcp_norm_cols,
                 gamma_norm_cols=gamma_norm_cols,
+                maxmin_norm_cols='',
                 pbm_norm=pbm_norm,
                 data_source=data_source,
                 global_vars=global_vars,
@@ -222,6 +223,7 @@ class DapengScaler(object):
         other_vars: Optional[dict] = None,
         prcp_norm_cols=None,
         gamma_norm_cols=None,
+        maxmin_norm_cols=None,
         pbm_norm=False,
         data_source: object = None,
         global_vars: np.array = None,
@@ -265,6 +267,11 @@ class DapengScaler(object):
                 "surface_net_solar_radiation",
                 "sm_surface",
                 "sm_rootzone",
+                "tp",
+            ]
+        if maxmin_norm_cols is not None and global_vars is not None:
+            maxmin_norm_cols = [
+                "streamflow",
             ]
         self.data_target = target_vars
         self.data_forcing = relevant_vars
@@ -275,6 +282,7 @@ class DapengScaler(object):
         self.data_other = other_vars
         self.prcp_norm_cols = prcp_norm_cols
         self.gamma_norm_cols = gamma_norm_cols
+        self.maxmin_norm_cols = maxmin_norm_cols
         # both prcp_norm_cols and gamma_norm_cols use log(\sqrt(x)+.1) method to normalize
         self.log_norm_cols = gamma_norm_cols + prcp_norm_cols
         self.pbm_norm = pbm_norm
@@ -312,7 +320,7 @@ class DapengScaler(object):
             .T  # TODO: check why T is needed
         )
 
-    def inverse_transform(self, target_values):
+    def inverse_transform(self, target_values, maxmin_norm_cols=None):
         """
         Denormalization for output variables
 
@@ -320,6 +328,8 @@ class DapengScaler(object):
         ----------
         target_values
             output variables
+        maxmin_norm_cols : list, optional
+            data items which use maxmin_norm method to normalize, by default None
 
         Returns
         -------
@@ -328,6 +338,9 @@ class DapengScaler(object):
         """
         stat_dict = self.stat_dict
         target_cols = self.data_cfgs["target_cols"]
+        if maxmin_norm_cols is None:
+            maxmin_norm_cols = self.maxmin_norm_cols
+        
         if self.pbm_norm:
             # for pbm's output, its unit is mm/day, so we don't need to recover its unit
             pred = target_values
@@ -337,6 +350,7 @@ class DapengScaler(object):
                 target_cols,
                 stat_dict,
                 log_norm_cols=self.log_norm_cols,
+                maxmin_norm_cols=maxmin_norm_cols,
                 to_norm=False,
             )
             for i in range(len(self.data_cfgs["target_cols"])):
@@ -367,7 +381,10 @@ class DapengScaler(object):
         stat_dict = {}
         for i in range(len(target_cols)):
             var = target_cols[i]
-            if var in self.prcp_norm_cols:
+            if var in self.maxmin_norm_cols:
+                data = self.data_target.sel(variable=var).to_numpy()
+                stat_dict[var] = [np.nanmin(data), np.nanmax(data),None,None]
+            elif var in self.prcp_norm_cols:
                 stat_dict[var] = cal_stat_prcp_norm(
                     self.data_target.sel(variable=var).to_numpy(),
                     self.mean_prcp,
@@ -431,20 +448,21 @@ class DapengScaler(object):
             out.attrs["units"] = {}
         for i in range(len(target_cols)):
             var = target_cols[i]
-            if var in self.prcp_norm_cols:
-                out.loc[dict(variable=var)] = _prcp_norm(
-                    data.sel(variable=var).to_numpy(),
-                    self.mean_prcp,
-                    to_norm=True,
-                )
-            else:
-                out.loc[dict(variable=var)] = data.sel(variable=var).to_numpy()
+            # if var in self.prcp_norm_cols:
+            #     out.loc[dict(variable=var)] = _prcp_norm(
+            #         data.sel(variable=var).to_numpy(),
+            #         self.mean_prcp,
+            #         to_norm=True,
+            #     )
+            # else:
+            out.loc[dict(variable=var)] = data.sel(variable=var).to_numpy()
             out.attrs["units"][var] = "dimensionless"
         out = _trans_norm(
             out,
             target_cols,
             stat_dict,
             log_norm_cols=self.log_norm_cols,
+            maxmin_norm_cols=self.maxmin_norm_cols,
             to_norm=to_norm,
         )
         return out

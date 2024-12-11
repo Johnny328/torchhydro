@@ -12,8 +12,7 @@ class BALSTM(nn.Module):
                                  batch_first=True, initial_forget_bias=0)
         self.dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_size, output_size)
-        # self.act = nn.ReLU()
-        self.act = nn.Mish()
+        self.act = nn.ReLU()
     # def forward(self, data):
     #     x_s, x_d, x_g = data
     def forward(self, x_s, x_d, x_g):
@@ -148,10 +147,8 @@ class SingleBALSTM(nn.Module):
 class VanillaLSTM(nn.Module):
     def __init__(self, input_size_sta, input_size_dyn, hidden_size, output_size, num_layers, drop_prob=0.5):
         super().__init__()
-
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-
         if num_layers == 1:
             self.lstm = nn.LSTM(input_size_dyn + input_size_sta, hidden_size, num_layers, batch_first=True)
         else:

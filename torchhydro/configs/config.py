@@ -183,6 +183,7 @@ def default_config_file():
                     "pr",
                     # PRCP_ERA5LAND_NAME is same as PRCP_NLDAS_NAME
                     PRCP_NLDAS_NAME,
+                    'tp',
                     "pre",
                     # pet may be negative, but we set negative as 0 because of gamma_norm_cols
                     # https://earthscience.stackexchange.com/questions/12031/does-negative-reference-evapotranspiration-make-sense-using-fao-penman-monteith
@@ -206,6 +207,9 @@ def default_config_file():
                     "susma",
                 ],
                 "pbm_norm": False,
+                "maxmin_norm_cols": [
+                    "streamflow",
+                ],
             },
             "stat_dict_file": None,
             # dataset for pytorch dataset
