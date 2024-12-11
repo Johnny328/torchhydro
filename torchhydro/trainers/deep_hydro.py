@@ -291,7 +291,9 @@ class DeepHydro(DeepHydroInterface):
         lr_scheduler_cfg = training_cfgs["lr_scheduler"]
 
         if "lr" in lr_scheduler_cfg and "lr_factor" not in lr_scheduler_cfg:
-            scheduler = LambdaLR(opt, lr_lambda=lambda epoch: 1.0)
+            target_lr = lr_scheduler_cfg["lr"]
+            scheduler = LambdaLR(opt, lr_lambda=lambda epoch: target_lr / opt.param_groups[0]['lr'])
+            # scheduler = LambdaLR(opt, lr_lambda=lambda epoch: 1.0)
         elif isinstance(lr_scheduler_cfg, dict) and all(
             isinstance(epoch, int) for epoch in lr_scheduler_cfg
         ):
