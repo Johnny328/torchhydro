@@ -179,6 +179,9 @@ class VanillaLSTM(nn.Module):
 
 
 class SimpleBALSTM(nn.Module):
+    '''
+    A simplified version of balstm
+    '''
     def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5,num_layers=0,prec_window=0):
         super(SimpleBALSTM, self).__init__()
         self.hidden_size = hidden_size
