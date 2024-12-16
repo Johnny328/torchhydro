@@ -176,3 +176,48 @@ class VanillaLSTM(nn.Module):
         # use specific activation
         out = self.act(out)
         return out
+
+
+class SimpleBALSTM(nn.Module):
+    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5,num_layers=0,prec_window=0):
+        super(SimpleBALSTM, self).__init__()
+        self.hidden_size = hidden_size
+        self.W_xs1 = nn.Linear(input_size_sta, hidden_size)
+        self.W_xs2 = nn.Linear(input_size_sta, hidden_size)
+        self.W_xg = nn.Linear(input_size_glo + hidden_size, hidden_size)
+        self.W_xt = nn.Linear(input_size_dyn + hidden_size, hidden_size)
+        self.W_f = nn.Linear(input_size_dyn + hidden_size, hidden_size)
+        self.W_o = nn.Linear(input_size_dyn + hidden_size, hidden_size)
+        self.fc = nn.Linear(hidden_size, output_size)
+        self.dropout = nn.Dropout(p=dropout)
+    def forward(self, xs,xt,xg, init_states=None):
+        batch_size = xt.size(0)
+        seq_length = xt.size(1)
+        if xs.dim() == 3:
+            xs=xs.squeeze(1)
+        if init_states is None:
+            h_t = torch.zeros(batch_size, self.hidden_size).to(xt.device)
+            c_t = torch.zeros(batch_size, self.hidden_size).to(xt.device)
+        else:
+            h_t, c_t = init_states
+
+        i1 = torch.sigmoid(self.W_xs1(xs))
+        i2 = torch.sigmoid(self.W_xs2(xs))
+        outputs = []
+        for t in range(seq_length):
+            x_g = xg[:, t, :]
+            x_t = xt[:, t, :]
+            xg_combined = torch.cat((x_g, h_t), dim=1)
+            xt_combined = torch.cat((x_t, h_t), dim=1)
+            f_t = torch.sigmoid(self.W_f(xt_combined))
+            g_t = torch.tanh(self.W_xg(xg_combined))
+            i_t = torch.tanh(self.W_xt(xt_combined))
+            o_t = torch.sigmoid(self.W_o(xt_combined))
+            c_t = f_t * c_t + i1 * g_t + i2 * i_t
+            h_t = o_t * torch.tanh(c_t)
+            h_t = self.dropout(h_t)  
+            outputs.append(h_t.unsqueeze(1))
+        outputs = torch.cat(outputs, dim=1)
+        out = self.fc(outputs)
+        return out, (h_t, c_t)
+    
