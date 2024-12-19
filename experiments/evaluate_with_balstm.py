@@ -34,8 +34,8 @@ var_t = [
 ]
 
 def create_config_LongTerm():
-    project_name = os.path.join("train_with_LongTerm", "maxmin_100_82_92")
-    train_path = '/home/yichengsun/My_Code/torchhydro/results/train_with_LongTerm/maxmin_100_82_92'
+    project_name = os.path.join("train_with_LongTerm", "100_period")
+    train_path = '/home/yichengsun/My_Code/torchhydro/results/train_with_LongTerm/100_period'
     config_data = default_config_file()
     args = cmd(
         sub=project_name,
@@ -56,7 +56,7 @@ def create_config_LongTerm():
             "input_size_sta": len(var_c),  # len(var_c) max 195
             "prec_window": 0,
         },
-        model_loader={"load_way": "best"},
+        model_loader={"load_way": "latest"},
         gage_id=basins,
         batch_size=256,
         forecast_history=72,
@@ -69,11 +69,9 @@ def create_config_LongTerm():
         dataset="BALSTMDataset",
         sampler=None,
         scaler="DapengScaler",
-        train_epoch=30,
+        train_epoch=100,
         save_epoch=1,
-        train_period=["1951-01-01", "2001-12-31"],
-        test_period=["1982-01-01", "1992-12-31"],
-        valid_period=["1982-01-01", "1992-12-31"],
+        test_period=(["1982-01-01", "1992-12-31"]),
         loss_func="NSELoss",
         opt="Adam",
         lr_scheduler={"lr": 0.0001},
@@ -85,7 +83,7 @@ def create_config_LongTerm():
         patience=2,
         model_type="Normal",
         train_mode=False,
-        weight_path=os.path.join(train_path, "model_Ep30.pth"),
+        weight_path=os.path.join(train_path, "model_Ep100.pth"),
         stat_dict_file=os.path.join(train_path, "dapengscaler_stat.json"),
     )
     update_cfg(config_data, args)

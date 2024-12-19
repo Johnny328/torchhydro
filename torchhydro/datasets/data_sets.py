@@ -746,6 +746,8 @@ class BALSTMDataset(BaseDataset):
         return self.num_samples if self.train_mode else self.ngrid
 
     def __getitem__(self, idx):
+        basin, idx = self.lookup_table[idx]
+        warmup_length = self.warmup_length
         if not self.train_mode:
             x = self.x[idx, :, :]
             y = self.y[idx, :, :]
@@ -757,8 +759,7 @@ class BALSTMDataset(BaseDataset):
                 torch.from_numpy(x).float(),
                 torch.from_numpy(xg).float(),
             ), torch.from_numpy(y).float()
-        basin, idx = self.lookup_table[idx]
-        warmup_length = self.warmup_length
+        
         x = self.x[basin, idx - warmup_length : idx + self.rho + self.horizon, :]
         y = self.y[basin, idx : idx + self.rho + self.horizon, :]
         c = self.c[basin, :]    
@@ -1043,3 +1044,53 @@ class VanillaLSTMDataset(BaseDataset):
                 data_forcing_ds, data_output_ds, data_attr_ds
             )
         )
+
+
+class EncDecBALSTMDataset(BALSTMDataset):
+    def __init__(self, data_cfgs, is_tra_val_te):
+        super().__init__(data_cfgs, is_tra_val_te)
+
+    def __len__(self):
+        return self.num_samples if self.train_mode else self.ngrid
+
+    def __getitem__(self, idx):
+        basin, idx = self.lookup_table[idx]
+        warmup_length = self.warmup_length
+
+        encoder_length = self.rho 
+        decoder_length = self.horizon  
+        total_length = encoder_length + decoder_length
+
+        c = self.c[basin, :]
+        c = c.reshape(c.shape[0], -1).T
+
+        # if not self.train_mode:
+        #     x_enc = self.x[idx - warmup_length : idx + encoder_length, :]
+        #     xg_enc = self.xg[idx - warmup_length : idx + encoder_length, :]
+        #     y = self.y[idx + encoder_length : idx + total_length, :]
+        #     return (
+        #         torch.from_numpy(c).float(),
+        #         torch.from_numpy(x_enc).float(),
+        #         torch.from_numpy(xg_enc).float(),
+        #     ), torch.from_numpy(y).float()
+
+        x_enc = self.x[basin, idx - warmup_length : idx + encoder_length, :]
+        xg_enc = self.xg[basin, idx - warmup_length : idx + encoder_length, :]
+        x_dec = self.x[basin, idx + encoder_length : idx + total_length, :]
+        xg_dec = self.xg[basin, idx + encoder_length : idx + total_length, :]
+        y = self.y[basin, idx + encoder_length : idx + total_length, :]
+        # if self.train_mode:
+        return (
+            torch.from_numpy(c).float(),
+            torch.from_numpy(x_enc).float(),
+            torch.from_numpy(xg_enc).float(),
+            torch.from_numpy(x_dec).float(),
+            torch.from_numpy(xg_dec).float(),
+        ), torch.from_numpy(y).float()
+        # return (
+        #     torch.from_numpy(c).float(),
+        #     torch.from_numpy(x_enc).float(),
+        #     torch.from_numpy(xg_enc).float(),
+        # ), torch.from_numpy(y).float()        
+
+    

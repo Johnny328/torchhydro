@@ -17,6 +17,7 @@ from torchhydro.datasets.data_sets import (
     TransformerDataset,
     BALSTMDataset,
     VanillaLSTMDataset,
+    EncDecBALSTMDataset
 )
 
 
@@ -29,4 +30,5 @@ datasets_dict = {
     "TransformerDataset":TransformerDataset,
     "BALSTMDataset": BALSTMDataset,
     "VanillaLSTMDataset":VanillaLSTMDataset,
+    "EncDecBALSTMDataset":EncDecBALSTMDataset
 }
