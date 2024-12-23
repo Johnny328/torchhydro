@@ -20,7 +20,7 @@ from typing import Optional
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from hydrodatasource.utils.utils import streamflow_unit_conv
-
+from dateutil.relativedelta import relativedelta
 from torchhydro.configs.config import DATE_FORMATS
 from torchhydro.datasets.data_scalers import ScalerHub
 from torchhydro.datasets.data_sources import data_sources_dict
@@ -1083,50 +1083,127 @@ class VanillaLSTMDataset(BaseDataset):
 
 
 class EncDecBALSTMDataset(BALSTMDataset):
-    def __init__(self, data_cfgs, is_tra_val_te):
+    def __init__(self, data_cfgs: dict, is_tra_val_te: str):
         super().__init__(data_cfgs, is_tra_val_te)
 
     def __len__(self):
-        return self.num_samples if self.train_mode else self.ngrid
+        return self.num_samples
+    
+    # TODO 重写_read_xyc _read_xyc_specified_time
+    def __getitem__(self, item: int):
+        basin, time = self.lookup_table[item]
+        rho = self.rho
+        horizon = self.horizon
+        prec = self.data_cfgs.get("prec_window", 0)
+        # p cover all encoder-decoder periods; +1 means the period while +0 means start of the current period
+        # p = self.x[basin, time + 1 : time + rho + horizon + 1, 0].reshape(-1, 1)
+        p = self.x[basin, time + 1: time + rho + horizon + 1, 0].reshape(-1, 1)
+        # s only cover encoder periods
+        s = self.x[basin, time : time + rho, 1:]
 
-    def __getitem__(self, idx):
-        basin, idx = self.lookup_table[idx]
-        warmup_length = self.warmup_length
-
-        encoder_length = self.rho 
-        decoder_length = self.horizon  
-        total_length = encoder_length + decoder_length
-
+        sd = self.x[basin, time + rho : time + rho + horizon, 1:]
+        # xt = self.x[basin, time + 1 : time + rho + horizon + 1, 0:]
+        xt = np.concatenate((p[:rho], s), axis=1)
+        
+        xg = self.xg[basin, time : time + rho, :]
         c = self.c[basin, :]
         c = c.reshape(c.shape[0], -1).T
+        # c = np.tile(c, (rho + horizon, 1))
+        # x = np.concatenate((x, xg), axis=1)
 
-        # if not self.train_mode:
-        #     x_enc = self.x[idx - warmup_length : idx + encoder_length, :]
-        #     xg_enc = self.xg[idx - warmup_length : idx + encoder_length, :]
-        #     y = self.y[idx + encoder_length : idx + total_length, :]
-        #     return (
-        #         torch.from_numpy(c).float(),
-        #         torch.from_numpy(x_enc).float(),
-        #         torch.from_numpy(xg_enc).float(),
-        #     ), torch.from_numpy(y).float()
+        # TODO: decoder input only need precipitation 
+        x_dec = np.concatenate((p[rho:], sd), axis=1)
 
-        x_enc = self.x[basin, idx - warmup_length : idx + encoder_length, :]
-        xg_enc = self.xg[basin, idx - warmup_length : idx + encoder_length, :]
-        x_dec = self.x[basin, idx + encoder_length : idx + total_length, :]
-        xg_dec = self.xg[basin, idx + encoder_length : idx + total_length, :]
-        y = self.y[basin, idx + encoder_length : idx + total_length, :]
-        # if self.train_mode:
-        return (
+        y = self.y[basin, time + rho - prec + 1: time + rho + horizon + 1, :]
+
+        if self.is_tra_val_te == "train":
+            return [
+                torch.from_numpy(c).float(),
+                torch.from_numpy(xt).float(),
+                torch.from_numpy(xg).float(),
+                torch.from_numpy(x_dec).float(),
+                torch.from_numpy(y).float(),
+            ], torch.from_numpy(y).float()
+        return [
             torch.from_numpy(c).float(),
-            torch.from_numpy(x_enc).float(),
-            torch.from_numpy(xg_enc).float(),
+            torch.from_numpy(xt).float(),
+            torch.from_numpy(xg).float(),
             torch.from_numpy(x_dec).float(),
-            torch.from_numpy(xg_dec).float(),
-        ), torch.from_numpy(y).float()
-        # return (
-        #     torch.from_numpy(c).float(),
-        #     torch.from_numpy(x_enc).float(),
-        #     torch.from_numpy(xg_enc).float(),
-        # ), torch.from_numpy(y).float()        
-
+        ], torch.from_numpy(y).float()
     
+    def _read_xyc_specified_time(self, start_date, end_date):
+        """Read x, y, c and global data from data source.
+
+        Returns
+        -------
+        tuple[xr.Dataset, xr.Dataset, xr.Dataset, xr.Dataset]
+            x, y, c, global data
+        """
+        # Read x (forcing data)
+        data_forcing_ds_ = self.data_source.read_ts_xrdataset(
+            self.t_s_dict["sites_id"],
+            # self.t_s_dict["t_final_range"],
+            [start_date, end_date],
+            self.data_cfgs["relevant_cols"],
+        )
+
+        # Read y (target/output data)
+        data_output_ds_ = self.data_source.read_ts_xrdataset(
+            self.t_s_dict["sites_id"],
+            # self.t_s_dict["t_final_range"],
+            [start_date, end_date],
+            self.data_cfgs["target_cols"],
+        )
+
+        # Handle potential dict cases (unified time range for all basins)
+        if isinstance(data_output_ds_, dict) or isinstance(data_forcing_ds_, dict):
+            data_forcing_ds = data_forcing_ds_[list(data_forcing_ds_.keys())[0]]
+            data_output_ds = data_output_ds_[list(data_output_ds_.keys())[0]]
+
+        # Read c (constant/static data)
+        data_attr_ds = self.data_source.read_attr_xrdataset(
+            self.t_s_dict["sites_id"],
+            self.data_cfgs["constant_cols"],
+            all_number=True,
+        )
+
+        global_data_ds = self.data_source.read_global_data(
+            self.t_s_dict["sites_id"], 
+            [start_date, end_date],
+            # self.t_s_dict["t_final_range"],
+        )
+        global_data_ds = global_data_ds[list(global_data_ds.keys())[0]]
+
+        # ---- Transform data to xarray with units and convert to numpy ----
+        self.x_origin, self.y_origin, self.c_origin, self.xg_origin = (
+            self._to_dataarray_with_unit(
+                data_forcing_ds, data_output_ds, data_attr_ds, global_data_ds
+            )
+        )
+
+
+    def _read_xyc(self):
+        """
+        NOTE: the lookup table is same as BaseDataset,
+        but the data retrieved from datasource should has one more period,
+        because we include the concepts of start and end moment of the period
+
+        Returns
+        -------
+        tuple[xr.Dataset, xr.Dataset, xr.Dataset]
+            x, y, c data
+        """
+        start_date = self.t_s_dict["t_final_range"][0]
+        end_date = self.t_s_dict["t_final_range"][1]
+        interval = self.data_cfgs["min_time_interval"]
+        time_unit = self.data_cfgs["min_time_unit"]
+
+        date_format = detect_date_format(end_date)
+        end_date_dt = datetime.strptime(end_date, date_format)
+        if time_unit == "ME":
+            adjusted_end_date = (end_date_dt + relativedelta(months=interval)).strftime(
+                date_format
+            )
+        else:
+            raise ValueError(f"Unsupported time unit: {time_unit}")
+        self._read_xyc_specified_time(start_date, adjusted_end_date)

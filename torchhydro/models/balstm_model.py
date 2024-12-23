@@ -178,49 +178,121 @@ class VanillaLSTM(nn.Module):
         return out
 
 
+# class SimpleBALSTM(nn.Module):
+#     '''
+#     A simplified version of balstm
+#     '''
+#     def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5,num_layers=0,prec_window=0):
+#         super(SimpleBALSTM, self).__init__()
+#         self.hidden_size = hidden_size
+#         self.W_xs1 = nn.Linear(input_size_sta, hidden_size)
+#         self.W_xs2 = nn.Linear(input_size_sta, hidden_size)
+#         self.W_xg = nn.Linear(input_size_glo + hidden_size, hidden_size)
+#         self.W_xt = nn.Linear(input_size_dyn + hidden_size, hidden_size)
+#         self.W_f = nn.Linear(input_size_dyn + hidden_size, hidden_size)
+#         self.W_o = nn.Linear(input_size_dyn + hidden_size, hidden_size)
+#         self.fc = nn.Linear(hidden_size, output_size)
+#         self.dropout = nn.Dropout(p=dropout)
+#     def forward(self, xs, xt, xg, init_states=None):
+#         batch_size = xt.size(0)
+#         seq_length = xt.size(1)
+#         if xs.dim() == 3:
+#             xs=xs.squeeze(1)
+#         if init_states is None:
+#             h_t = torch.zeros(batch_size, self.hidden_size).to(xt.device)
+#             c_t = torch.zeros(batch_size, self.hidden_size).to(xt.device)
+#         else:
+#             h_t, c_t = init_states
+
+#         i1 = torch.sigmoid(self.W_xs1(xs))
+#         i2 = torch.sigmoid(self.W_xs2(xs))
+#         outputs = []
+#         for t in range(seq_length):
+#             x_g = xg[:, t, :]
+#             x_t = xt[:, t, :]
+#             xg_combined = torch.cat((x_g, h_t), dim=1)
+#             xt_combined = torch.cat((x_t, h_t), dim=1)
+#             f_t = torch.sigmoid(self.W_f(xt_combined))
+#             g_t = torch.tanh(self.W_xg(xg_combined))
+#             i_t = torch.tanh(self.W_xt(xt_combined))
+#             o_t = torch.sigmoid(self.W_o(xt_combined))
+#             c_t = f_t * c_t + i1 * g_t + i2 * i_t
+#             h_t = o_t * torch.tanh(c_t)
+#             h_t = self.dropout(h_t)  
+#             outputs.append(h_t.unsqueeze(1))
+#         outputs = torch.cat(outputs, dim=1)
+#         out = self.fc(outputs)
+#         return out, (h_t, c_t)
+    
 class SimpleBALSTM(nn.Module):
-    '''
-    A simplified version of balstm
-    '''
-    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5,num_layers=0,prec_window=0):
+    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5, num_layers=1, prec_window=0):
         super(SimpleBALSTM, self).__init__()
         self.hidden_size = hidden_size
-        self.W_xs1 = nn.Linear(input_size_sta, hidden_size)
-        self.W_xs2 = nn.Linear(input_size_sta, hidden_size)
-        self.W_xg = nn.Linear(input_size_glo + hidden_size, hidden_size)
-        self.W_xt = nn.Linear(input_size_dyn + hidden_size, hidden_size)
-        self.W_f = nn.Linear(input_size_dyn + hidden_size, hidden_size)
-        self.W_o = nn.Linear(input_size_dyn + hidden_size, hidden_size)
+        self.num_layers = num_layers
+        
+        # 为每一层创建权重矩阵
+        self.layers = nn.ModuleList([])
+        for i in range(num_layers):
+            layer_input_size = input_size_dyn if i == 0 else hidden_size
+            layer = nn.ModuleDict({
+                'W_xs1': nn.Linear(input_size_sta, hidden_size),
+                'W_xs2': nn.Linear(input_size_sta, hidden_size),
+                'W_xg': nn.Linear(input_size_glo + hidden_size, hidden_size),
+                'W_xt': nn.Linear(layer_input_size + hidden_size, hidden_size),
+                'W_f': nn.Linear(layer_input_size + hidden_size, hidden_size),
+                'W_o': nn.Linear(layer_input_size + hidden_size, hidden_size)
+            })
+            self.layers.append(layer)
+            
         self.fc = nn.Linear(hidden_size, output_size)
         self.dropout = nn.Dropout(p=dropout)
-    def forward(self, xs,xt,xg, init_states=None):
+
+    def forward(self, xs, xt, xg, init_states=None):
         batch_size = xt.size(0)
         seq_length = xt.size(1)
         if xs.dim() == 3:
-            xs=xs.squeeze(1)
+            xs = xs.squeeze(1)
+            
+        # 初始化所有层的隐藏状态
         if init_states is None:
-            h_t = torch.zeros(batch_size, self.hidden_size).to(xt.device)
-            c_t = torch.zeros(batch_size, self.hidden_size).to(xt.device)
+            h_t = [torch.zeros(batch_size, self.hidden_size).to(xt.device) for _ in range(self.num_layers)]
+            c_t = [torch.zeros(batch_size, self.hidden_size).to(xt.device) for _ in range(self.num_layers)]
         else:
             h_t, c_t = init_states
-
-        i1 = torch.sigmoid(self.W_xs1(xs))
-        i2 = torch.sigmoid(self.W_xs2(xs))
+            
+        # 每层的i1, i2只需计算一次
+        i1 = [torch.sigmoid(layer['W_xs1'](xs)) for layer in self.layers]
+        i2 = [torch.sigmoid(layer['W_xs2'](xs)) for layer in self.layers]
+        
         outputs = []
         for t in range(seq_length):
+            x_input = xt[:, t, :]
             x_g = xg[:, t, :]
-            x_t = xt[:, t, :]
-            xg_combined = torch.cat((x_g, h_t), dim=1)
-            xt_combined = torch.cat((x_t, h_t), dim=1)
-            f_t = torch.sigmoid(self.W_f(xt_combined))
-            g_t = torch.tanh(self.W_xg(xg_combined))
-            i_t = torch.tanh(self.W_xt(xt_combined))
-            o_t = torch.sigmoid(self.W_o(xt_combined))
-            c_t = f_t * c_t + i1 * g_t + i2 * i_t
-            h_t = o_t * torch.tanh(c_t)
-            h_t = self.dropout(h_t)  
-            outputs.append(h_t.unsqueeze(1))
+            
+            # 通过每一层
+            for l in range(self.num_layers):
+                xg_combined = torch.cat((x_g, h_t[l]), dim=1)
+                xt_combined = torch.cat((x_input, h_t[l]), dim=1)
+                
+                f_t = torch.sigmoid(self.layers[l]['W_f'](xt_combined))
+                g_t = torch.tanh(self.layers[l]['W_xg'](xg_combined))
+                i_t = torch.tanh(self.layers[l]['W_xt'](xt_combined))
+                o_t = torch.sigmoid(self.layers[l]['W_o'](xt_combined))
+                
+                c_t[l] = f_t * c_t[l] + i1[l] * g_t + i2[l] * i_t
+                h_t[l] = o_t * torch.tanh(c_t[l])
+                h_t[l] = self.dropout(h_t[l])
+                
+                # 下一层的输入是当前层的输出
+                x_input = h_t[l]
+                
+            outputs.append(h_t[-1].unsqueeze(1))
+            
         outputs = torch.cat(outputs, dim=1)
         out = self.fc(outputs)
+        
+        # 返回所有层的最终隐藏状态和细胞状态
+        h_t = torch.stack(h_t, dim=0)  # [num_layers, batch_size, hidden_size]
+        c_t = torch.stack(c_t, dim=0)  # [num_layers, batch_size, hidden_size]
+        
         return out, (h_t, c_t)
-    

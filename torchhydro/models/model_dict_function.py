@@ -75,7 +75,7 @@ pytorch_model_dict = {
     "BALSTM":BALSTM,
     "VanillaLSTM":VanillaLSTM,
     "SimpleBALSTM":SimpleBALSTM,
-    "Enc_Dec_BALSTM":SimpleBALSTM_EncDec
+    "SimpleBALSTM_EncDec":SimpleBALSTM_EncDec
 }
 
 pytorch_criterion_dict = {
