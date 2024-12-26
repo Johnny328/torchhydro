@@ -1,7 +1,7 @@
 import os
 import pytest
 
-from configs.config import cmd
+from torchhydro.configs.config import cmd
 from tests.test_seq2seq import gage_id
 from torchhydro.configs.config import cmd, default_config_file, update_cfg
 from torchhydro import SETTING
@@ -483,8 +483,8 @@ def seq2seq_config():
             "teacher_forcing_ratio": 0.5,
         },
         model_loader={"load_way": "best"},
-        gage_id=gage_id,
-        # gage_id=["21400800", "21401550", "21401300", "21401900"],
+        # gage_id=gage_id,
+        gage_id=["21400800", "21401550", "21401300", "21401900"],
         batch_size=128,
         forecast_history=240,
         forecast_length=56,

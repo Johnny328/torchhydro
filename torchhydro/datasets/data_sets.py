@@ -1088,33 +1088,29 @@ class EncDecBALSTMDataset(BALSTMDataset):
 
     def __len__(self):
         return self.num_samples
-    
-    # TODO 重写_read_xyc _read_xyc_specified_time
+
     def __getitem__(self, item: int):
         basin, time = self.lookup_table[item]
         rho = self.rho
         horizon = self.horizon
         prec = self.data_cfgs.get("prec_window", 0)
-        # p cover all encoder-decoder periods; +1 means the period while +0 means start of the current period
-        # p = self.x[basin, time + 1 : time + rho + horizon + 1, 0].reshape(-1, 1)
-        p = self.x[basin, time + 1: time + rho + horizon + 1, 0].reshape(-1, 1)
+        p = self.x[basin, time : time + rho + horizon , 0].reshape(-1, 1)
         # s only cover encoder periods
-        s = self.x[basin, time : time + rho, 1:]
-
-        sd = self.x[basin, time + rho : time + rho + horizon, 1:]
+        # s = self.x[basin, time : time + rho, 1:]
+        xt = self.x[basin, time : time + rho, :]
+        # sd = self.x[basin, time + rho : time + rho + horizon, 1:]
         # xt = self.x[basin, time + 1 : time + rho + horizon + 1, 0:]
-        xt = np.concatenate((p[:rho], s), axis=1)
+        # xt = np.concatenate((p[:rho], s), axis=1)
         
         xg = self.xg[basin, time : time + rho, :]
         c = self.c[basin, :]
         c = c.reshape(c.shape[0], -1).T
-        # c = np.tile(c, (rho + horizon, 1))
+        cd = np.tile(self.c[basin, :], (rho + horizon, 1))
         # x = np.concatenate((x, xg), axis=1)
 
-        # TODO: decoder input only need precipitation 
-        x_dec = np.concatenate((p[rho:], sd), axis=1)
-
-        y = self.y[basin, time + rho - prec + 1: time + rho + horizon + 1, :]
+        x_dec = np.concatenate((p[rho:], cd[rho:]), axis=1)
+        # x_dec = p[rho:]
+        y = self.y[basin, time + rho - prec +1 : time + rho + horizon + 1, :]
 
         if self.is_tra_val_te == "train":
             return [
