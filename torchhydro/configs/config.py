@@ -339,6 +339,7 @@ def cmd(
     weight_path=None,
     continue_train=None,
     var_c=None,
+    var_g=None,
     c_rm_nan=1,
     var_t=None,
     t_rm_nan=1,
@@ -638,6 +639,9 @@ def cmd(
     )
     parser.add_argument(
         "--var_c", dest="var_c", help="types of attributes", default=var_c, nargs="+"
+    )
+    parser.add_argument(
+        "--var_g", dest="var_g", help="types of global data", default=var_g, nargs="+"
     )
     parser.add_argument(
         "--c_rm_nan",
@@ -958,6 +962,19 @@ def update_cfg(cfg_file, new_args):
             cfg_file["data_cfgs"]["constant_cols"] = []
         else:
             cfg_file["data_cfgs"]["constant_cols"] = new_args.var_c
+    
+    if new_args.var_g is not None:
+        # I don't find a method to receive empty list for argparse, so if we input "None" or "" or " ", we treat it as []
+        if (
+            new_args.var_g == ["None"]
+            or new_args.var_g == [""]
+            or new_args.var_g == [" "]
+        ):
+            cfg_file["data_cfgs"]["global_cols"] = []
+        else:
+            cfg_file["data_cfgs"]["global_cols"] = new_args.var_g
+
+
     cfg_file["data_cfgs"]["constant_rm_nan"] = bool(new_args.c_rm_nan != 0)
     if new_args.var_t is not None:
         cfg_file["data_cfgs"]["relevant_cols"] = new_args.var_t

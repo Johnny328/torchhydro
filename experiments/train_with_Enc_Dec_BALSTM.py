@@ -32,9 +32,18 @@ var_t = df.columns.tolist()
 var_t.remove("streamflow")
 var_t.remove("time")
 
-
+df = pd.read_csv(
+    os.path.join(
+        SETTING["local_data_path"]["datasets-interim"],
+        "attributes",
+        "global_data.csv",
+    )
+)
+var_g = df.columns.tolist()
+var_g.remove("time")
+var_g.remove("A1")
 def create_config_LongTerm():
-    project_name = os.path.join("train_with_LongTerm_Seq2Seq", "178")
+    project_name = os.path.join("train_with_LongTerm_Seq2Seq", "test")
     config_data = default_config_file()
     args = cmd(
         sub=project_name,
@@ -50,7 +59,7 @@ def create_config_LongTerm():
             "forecast_length": 12,
             # "dropout": 0.4,
             "input_size_dyn": len(var_t),
-            "input_size_glo": 106,
+            "input_size_glo": len(var_g),
             "de_input_size": len(var_c)+1+1,
             "output_size": 1,
             "input_size_sta": len(var_c),  # len(var_c) max 195
@@ -65,13 +74,14 @@ def create_config_LongTerm():
         min_time_interval=1,
         var_t=var_t,
         var_c=var_c,
+        var_g=var_g,
         var_out=["streamflow"],
         dataset="EncDecBALSTMDataset",
         sampler=None,
         scaler="DapengScaler",
-        train_epoch=20,
+        train_epoch=1,
         save_epoch=1,
-        train_period=["1952-01-01", "2020-12-31"],
+        train_period=["1951-01-01", "1961-12-31"],
         test_period=["1982-01-01", "1992-12-31"],
         valid_period=["1982-01-01", "1992-12-31"],
         loss_func="NSELoss",

@@ -1165,9 +1165,10 @@ class EncDecBALSTMDataset(BALSTMDataset):
         global_data_ds = self.data_source.read_global_data(
             self.t_s_dict["sites_id"], 
             [start_date, end_date],
+            self.data_cfgs["global_cols"],
             # self.t_s_dict["t_final_range"],
         )
-        global_data_ds = global_data_ds[list(global_data_ds.keys())[0]]
+        # global_data_ds = global_data_ds[list(global_data_ds.keys())[0]]
 
         # ---- Transform data to xarray with units and convert to numpy ----
         self.x_origin, self.y_origin, self.c_origin, self.xg_origin = (
@@ -1186,9 +1187,8 @@ class EncDecBALSTMDataset(BALSTMDataset):
         date_format = detect_date_format(end_date)
         end_date_dt = datetime.strptime(end_date, date_format)
         if time_unit == "ME":
-            adjusted_end_date = (end_date_dt + relativedelta(months=interval)).strftime(
-                date_format
-            )
+            next_month = end_date_dt + relativedelta(months=interval)
+            adjusted_end_date = next_month.replace(day=1).strftime(date_format)
         else:
             raise ValueError(f"Unsupported time unit: {time_unit}")
         self._read_xyc_specified_time(start_date, adjusted_end_date)
