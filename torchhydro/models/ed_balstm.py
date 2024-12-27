@@ -2,8 +2,17 @@ import torch
 from torch import nn
 from torchhydro.models.balstm_model import SimpleBALSTM
 
+
 class GlobalEncoder(nn.Module):
-    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.4):
+    def __init__(
+        self,
+        input_size_sta,
+        input_size_dyn,
+        input_size_glo,
+        hidden_size,
+        output_size,
+        dropout=0.4,
+    ):
         super(GlobalEncoder, self).__init__()
         self.balstm = SimpleBALSTM(
             input_size_sta,
@@ -11,16 +20,13 @@ class GlobalEncoder(nn.Module):
             input_size_glo,
             hidden_size,
             output_size,
-            dropout=dropout
+            dropout=dropout,
         )
 
     def forward(self, x_s, x_d, x_g):
-        # x_s: 静态特征 (batch_size, static_features)
-        # x_d: 动态特征 (batch_size, seq_len, dynamic_features)
-        # x_g: 全局特征 (batch_size, seq_len, global_features)
         outputs, (hidden, cell) = self.balstm(x_s, x_d, x_g)
         return outputs, hidden, cell
-    
+
 
 class Decoder(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dim, num_layers=1, dropout=0.3):
@@ -55,18 +61,25 @@ class StateTransferNetwork(nn.Module):
 
 class SimpleBALSTM_EncDec(nn.Module):
     def __init__(
-        self,input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size,
+        self,
+        input_size_sta,
+        input_size_dyn,
+        input_size_glo,
+        hidden_size,
+        output_size,
         de_input_size,
         forecast_length,
         prec_window=0,
-        teacher_forcing_ratio=0.5,
+        teacher_forcing_ratio=0,
     ):
         super(SimpleBALSTM_EncDec, self).__init__()
         self.trg_len = forecast_length
         self.prec_window = prec_window
         self.teacher_forcing_ratio = teacher_forcing_ratio
         self.output_size = output_size
-        self.global_encoder = GlobalEncoder(input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size)
+        self.global_encoder = GlobalEncoder(
+            input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size
+        )
 
         self.decoder = Decoder(
             input_dim=de_input_size, hidden_dim=hidden_size, output_dim=output_size

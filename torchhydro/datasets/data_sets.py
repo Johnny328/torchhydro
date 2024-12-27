@@ -1107,7 +1107,6 @@ class EncDecBALSTMDataset(BALSTMDataset):
         c = c.reshape(c.shape[0], -1).T
         cd = np.tile(self.c[basin, :], (rho + horizon, 1))
         # x = np.concatenate((x, xg), axis=1)
-
         x_dec = np.concatenate((p[rho:], cd[rho:]), axis=1)
         # x_dec = p[rho:]
         y = self.y[basin, time + rho - prec +1 : time + rho + horizon + 1, :]
@@ -1179,16 +1178,6 @@ class EncDecBALSTMDataset(BALSTMDataset):
 
 
     def _read_xyc(self):
-        """
-        NOTE: the lookup table is same as BaseDataset,
-        but the data retrieved from datasource should has one more period,
-        because we include the concepts of start and end moment of the period
-
-        Returns
-        -------
-        tuple[xr.Dataset, xr.Dataset, xr.Dataset]
-            x, y, c data
-        """
         start_date = self.t_s_dict["t_final_range"][0]
         end_date = self.t_s_dict["t_final_range"][1]
         interval = self.data_cfgs["min_time_interval"]
