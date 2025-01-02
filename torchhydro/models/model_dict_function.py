@@ -47,6 +47,7 @@ from torchhydro.models.dpl4hbv import DplLstmHbv, DplAnnHbv
 from torchhydro.models.dpl4gr4j import DplLstmGr4j, DplAnnGr4j
 from torchhydro.models.balstm_model import BALSTM,VanillaLSTM,SimpleBALSTM
 from torchhydro.models.ed_balstm import SimpleBALSTM_EncDec
+from torchhydro.models.attn_ed_balstm import Attn_SimpleBALSTM_EncDec
 """
 Utility dictionaries to map a string to a class.
 """
@@ -75,7 +76,8 @@ pytorch_model_dict = {
     "BALSTM":BALSTM,
     "VanillaLSTM":VanillaLSTM,
     "SimpleBALSTM":SimpleBALSTM,
-    "SimpleBALSTM_EncDec":SimpleBALSTM_EncDec
+    "SimpleBALSTM_EncDec":SimpleBALSTM_EncDec,
+    "Attn_SimpleBALSTM_EncDec":Attn_SimpleBALSTM_EncDec
 }
 
 pytorch_criterion_dict = {

@@ -1,19 +1,37 @@
 import torch
 from torch import nn
-from torchhydro.models.balstm_model import SimpleBALSTM,BALSTM
+from torchhydro.models.balstm_model import SimpleBALSTM
+
+class StateTransferNetwork(nn.Module):
+    def __init__(self, hidden_dim):
+        super(StateTransferNetwork, self).__init__()
+        self.fc_hidden = nn.Linear(hidden_dim, hidden_dim)
+        self.fc_cell = nn.Linear(hidden_dim, hidden_dim)
+
+    def forward(self, hidden, cell):
+        transfer_hidden = torch.tanh(self.fc_hidden(hidden))
+        transfer_cell = self.fc_cell(cell)
+        return transfer_hidden, transfer_cell
+
+class AttentionModule(nn.Module):
+    def __init__(self, hidden_dim):
+        super(AttentionModule, self).__init__()
+        self.attn = nn.Linear(hidden_dim + 1, hidden_dim)  # Combine hidden state and encoder output
+        self.v = nn.Parameter(torch.rand(hidden_dim))  # Attention scoring vector
+
+    def forward(self, hidden, encoder_outputs):
+
+        batch_size, seq_len, hidden_dim = encoder_outputs.size()
+        hidden = hidden[-1].unsqueeze(1).repeat(1, seq_len, 1)  # (batch, seq_len, hidden_dim)
+        energy = torch.tanh(self.attn(torch.cat((hidden, encoder_outputs), dim=2)))  # (batch, seq_len, hidden_dim)
+        attn_weights = torch.softmax(energy.matmul(self.v), dim=1)  # (batch, seq_len)
+        context = torch.bmm(attn_weights.unsqueeze(1), encoder_outputs).squeeze(1)  # (batch, hidden_dim)
+        return context, attn_weights
 
 
 class GlobalEncoder(nn.Module):
-    def __init__(
-        self,
-        input_size_sta,
-        input_size_dyn,
-        input_size_glo,
-        hidden_size,
-        output_size,
-        dropout=0.4,
-        num_layers=2
-    ):
+
+    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.4,num_layers=2):
         super(GlobalEncoder, self).__init__()
         self.balstm = SimpleBALSTM(
             input_size_sta,
@@ -22,7 +40,7 @@ class GlobalEncoder(nn.Module):
             hidden_size,
             output_size,
             dropout=dropout,
-            num_layers=num_layers
+            num_layers=num_layers,
         )
 
     def forward(self, x_s, x_d, x_g):
@@ -31,6 +49,9 @@ class GlobalEncoder(nn.Module):
 
 
 class Decoder(nn.Module):
+    """
+    Decoder for generating future time steps based on encoder outputs and initial states.
+    """
     def __init__(self, input_dim, output_dim, hidden_dim, num_layers=2, dropout=0.3):
         super(Decoder, self).__init__()
         self.hidden_dim = hidden_dim
@@ -49,19 +70,8 @@ class Decoder(nn.Module):
         return output, hidden_, cell_
 
 
-class StateTransferNetwork(nn.Module):
-    def __init__(self, hidden_dim):
-        super(StateTransferNetwork, self).__init__()
-        self.fc_hidden = nn.Linear(hidden_dim, hidden_dim)
-        self.fc_cell = nn.Linear(hidden_dim, hidden_dim)
+class Attn_SimpleBALSTM_EncDec(nn.Module):
 
-    def forward(self, hidden, cell):
-        transfer_hidden = torch.tanh(self.fc_hidden(hidden))
-        transfer_cell = self.fc_cell(cell)
-        return transfer_hidden, transfer_cell
-
-
-class SimpleBALSTM_EncDec(nn.Module):
     def __init__(
         self,
         input_size_sta,
@@ -74,19 +84,19 @@ class SimpleBALSTM_EncDec(nn.Module):
         prec_window=0,
         teacher_forcing_ratio=0,
     ):
-        super(SimpleBALSTM_EncDec, self).__init__()
+        super(Attn_SimpleBALSTM_EncDec, self).__init__()
         self.trg_len = forecast_length
         self.prec_window = prec_window
         self.teacher_forcing_ratio = teacher_forcing_ratio
         self.output_size = output_size
+
         self.global_encoder = GlobalEncoder(
             input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size
         )
-
         self.decoder = Decoder(
             input_dim=de_input_size, hidden_dim=hidden_size, output_dim=output_size
         )
-        self.transfer = StateTransferNetwork(hidden_dim=hidden_size)
+        self.attention = AttentionModule(hidden_dim=hidden_size)  # Attention mechanism
 
     def forward(self, *src):
         if len(src) == 5:
@@ -102,10 +112,18 @@ class SimpleBALSTM_EncDec(nn.Module):
                 ),
                 float("nan"),
             ).to(device)
-        encoder_outputs, hidden_, cell_ = self.global_encoder(xs, xt, xg) #eo(batch_size,seq_len,1) hidden(num_layers,batch_size,hidden_size)
-        hidden, cell = self.transfer(hidden_, cell_)
+
+        # Encoding
+        encoder_outputs, hidden_, cell_ = self.global_encoder(xs, xt, xg)
+
+        # Attention-enhanced prec_window
+        if self.prec_window > 0:
+            context, attn_weights = self.attention(hidden_, encoder_outputs)
+
+        # Decoding
+        hidden, cell = hidden_, cell_
         outputs = []
-        current_input = encoder_outputs[:, -1, :].unsqueeze(1)
+        current_input = encoder_outputs[:, -1, :].unsqueeze(1)  # Last encoder output
 
         for t in range(self.trg_len):
             p = decoder_input[:, t, :].unsqueeze(1)
@@ -119,15 +137,13 @@ class SimpleBALSTM_EncDec(nn.Module):
                 random_vals < self.teacher_forcing_ratio
             ) * valid_mask
             current_input = torch.where(
-                torch.isnan(trg),  # if trg is nan
-                output,  # then use output
-                trg * use_teacher_forcing
-                + output
-                * (~use_teacher_forcing),  # else calculate with teacher forcing
+                torch.isnan(trg),
+                output,
+                trg * use_teacher_forcing + output * (~use_teacher_forcing),
             )
 
         outputs = torch.stack(outputs, dim=1)
         if self.prec_window > 0:
-            prec_outputs = encoder_outputs[:, -self.prec_window :, :]
-            outputs = torch.cat((prec_outputs, outputs), dim=1)
+            prec_context = context.unsqueeze(1).repeat(1, self.prec_window, 1)
+            outputs = torch.cat((prec_context, outputs), dim=1)
         return outputs

@@ -934,8 +934,9 @@ class BALSTMDataset(BaseDataset):
         global_data_ds = self.data_source.read_global_data(
             self.t_s_dict["sites_id"],  # assuming global data has a different ID set
             self.t_s_dict["t_final_range"],
+            self.data_cfgs["global_cols"]
         )
-        global_data_ds = global_data_ds[list(global_data_ds.keys())[0]]
+        # global_data_ds = global_data_ds[list(global_data_ds.keys())[0]]
 
         # ---- Transform data to xarray with units and convert to numpy ----
         self.x_origin, self.y_origin, self.c_origin, self.xg_origin = (
@@ -1099,21 +1100,13 @@ class EncDecBALSTMDataset(BALSTMDataset):
         horizon = self.horizon
         prec = self.data_cfgs.get("prec_window", 0)
         p = self.x[basin, time : time + rho + horizon , 0].reshape(-1, 1)
-        # s only cover encoder periods
-        # s = self.x[basin, time : time + rho, 1:]
         xt = self.x[basin, time : time + rho, :]
-        # sd = self.x[basin, time + rho : time + rho + horizon, 1:]
-        # xt = self.x[basin, time + 1 : time + rho + horizon + 1, 0:]
-        # xt = np.concatenate((p[:rho], s), axis=1)
-        
         xg = self.xg[basin, time : time + rho, :]
         c = self.c[basin, :]
         c = c.reshape(c.shape[0], -1).T
         cd = np.tile(self.c[basin, :], (rho + horizon, 1))
-        # x = np.concatenate((x, xg), axis=1)
         x_dec = np.concatenate((p[rho:], cd[rho:]), axis=1)
-        # x_dec = p[rho:]
-        y = self.y[basin, time + rho - prec +1 : time + rho + horizon + 1, :]
+        y = self.y[basin, time + rho - prec  : time + rho + horizon , :]
 
         if self.is_tra_val_te == "train":
             return [
