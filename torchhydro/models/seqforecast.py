@@ -1,21 +1,20 @@
 import torch
 import torch.nn as nn
 
-
-# Figure 4 shows that only static features need embedding
-# However neuralhydrology/neuralhydrology/modelzoo/inputlayer.py shows the opposite
-# self.dynamics_embedding, self.dynamics_output_size =
-#   self._get_embedding_net(cfg.dynamics_embedding, dynamics_input_size, 'dynamics')
+from torchhydro.models.ann import Mlp
 
 
 class FeatureEmbedding(nn.Module):
-    def __init__(self, input_dim, embedding_dim, dropout=0):
+    def __init__(
+        self, input_dim, embedding_dim, hidden_size=0, dropout=0.0, activation="relu"
+    ):
         super(FeatureEmbedding, self).__init__()
-        self.embedding = nn.Sequential(
-            nn.Linear(input_dim, embedding_dim),
-            nn.Tanh(),
-            nn.Linear(embedding_dim, embedding_dim),
-            nn.Dropout(p=dropout),
+        self.embedding = Mlp(
+            input_dim,
+            embedding_dim,
+            hidden_size=hidden_size,
+            dr=dropout,
+            activation=activation,
         )
 
     def forward(self, static_features):
@@ -23,9 +22,9 @@ class FeatureEmbedding(nn.Module):
 
 
 class HindcastLSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim):
+    def __init__(self, input_dim, hidden_dim, dropout=0):
         super(HindcastLSTM, self).__init__()
-        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True, dropout=dropout)
 
     def forward(self, x):
         output, (h, c) = self.lstm(x)
@@ -33,9 +32,9 @@ class HindcastLSTM(nn.Module):
 
 
 class ForecastLSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim):
+    def __init__(self, input_dim, hidden_dim, dropout=0):
         super(ForecastLSTM, self).__init__()
-        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True)
+        self.lstm = nn.LSTM(input_dim, hidden_dim, batch_first=True, dropout=dropout)
 
     def forward(self, x, h, c):
         output, _ = self.lstm(x, (h, c))
@@ -43,11 +42,17 @@ class ForecastLSTM(nn.Module):
 
 
 class HiddenStateTransferNet(nn.Module):
-    def __init__(self, hidden_dim):
+    def __init__(
+        self, hindcast_hidden_dim, forecast_hidden_dim, dropout=0.0, activation="relu"
+    ):
         super(HiddenStateTransferNet, self).__init__()
-        self.linear_transfer = nn.Linear(hidden_dim, hidden_dim)
-        self.nonlinear_transfer = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim), nn.Tanh()
+        self.linear_transfer = nn.Linear(hindcast_hidden_dim, forecast_hidden_dim)
+        self.nonlinear_transfer = Mlp(
+            hindcast_hidden_dim,
+            forecast_hidden_dim,
+            hidden_size=0,
+            dr=dropout,
+            activation=activation,
         )
 
     def forward(self, hidden, cell):
@@ -70,34 +75,94 @@ class SequentialForecastLSTM(nn.Module):
         self,
         static_input_dim,
         dynamic_input_dim,
-        embedding_dim,
-        hidden_dim,
+        static_embedding_dim,
+        sta_embed_hidden_dim,
+        dynamic_embedding_dim,
+        dyn_embed_hidden_dim,
+        hindcast_hidden_dim,
+        forecast_hidden_dim,
         output_dim,
-        use_paper_model=True,  # choose paper_model or neuralhydrology_repository_model
+        hindcast_output_window,
+        embedding_dropout,
+        handoff_dropout,
+        lstm_dropout,
+        activation="relu",
     ):
+        """_summary_
+
+        Parameters
+        ----------
+        static_input_dim : int
+            _description_
+        dynamic_input_dim : int
+            _description_
+        static_embedding_dim : int
+            output size of static embedding
+        sta_embed_hidden_dim: int
+            hidden size of static embedding
+        dynamic_embedding_dim : int
+            output size of dynamic embedding
+        dyn_embed_hidden_dim: int
+            hidden size of dynamic embedding
+        hidden_dim : _type_
+            _description_
+        output_dim : _type_
+            _description_
+        hindcast_output_window : int
+            length of hindcast output to calculate loss
+        """
         super(SequentialForecastLSTM, self).__init__()
         self.output_dim = output_dim
-        self.use_paper_model = use_paper_model
-        self.static_embedding = FeatureEmbedding(static_input_dim, embedding_dim)
-        self.dynamic_embedding = FeatureEmbedding(dynamic_input_dim, embedding_dim)
+        self.hindcast_output_window = hindcast_output_window
+        self.dynamic_embedding_dim = dynamic_embedding_dim
+        if static_embedding_dim > 0:
+            self.static_embedding = FeatureEmbedding(
+                static_input_dim,
+                static_embedding_dim,
+                sta_embed_hidden_dim,
+                embedding_dropout,
+                activation,
+            )
+        if dynamic_embedding_dim > 0:
+            self.dynamic_embedding = FeatureEmbedding(
+                dynamic_input_dim,
+                dynamic_embedding_dim,
+                dyn_embed_hidden_dim,
+                embedding_dropout,
+                activation,
+            )
+        self.static_embedding_dim = static_embedding_dim
+        self.dynamic_embedding_dim = dynamic_embedding_dim
         hindcast_input_dim = (
-            dynamic_input_dim + embedding_dim if use_paper_model else 2 * embedding_dim
-        )
+            dynamic_embedding_dim if dynamic_embedding_dim != 0 else dynamic_input_dim
+        ) + (static_embedding_dim if static_embedding_dim != 0 else static_input_dim)
         forecast_input_dim = (
-            dynamic_input_dim + embedding_dim if use_paper_model else 2 * embedding_dim
+            dynamic_embedding_dim if dynamic_embedding_dim != 0 else dynamic_input_dim
+        ) + (static_embedding_dim if static_embedding_dim != 0 else static_input_dim)
+        self.hindcast_lstm = HindcastLSTM(
+            hindcast_input_dim, hindcast_hidden_dim, lstm_dropout
         )
-        self.hindcast_lstm = HindcastLSTM(hindcast_input_dim, hidden_dim)
-        self.forecast_lstm = ForecastLSTM(forecast_input_dim, hidden_dim)
-        self.hiddenstatetransfer = HiddenStateTransferNet(hidden_dim=hidden_dim)
-        self.output_head = ModelOutputHead(hidden_dim, output_dim)
+        self.forecast_lstm = ForecastLSTM(
+            forecast_input_dim, forecast_hidden_dim, lstm_dropout
+        )
+        self.hiddenstatetransfer = HiddenStateTransferNet(
+            hindcast_hidden_dim,
+            forecast_hidden_dim,
+            dropout=handoff_dropout,
+            activation=activation,
+        )
+        self.hindcast_output_head = ModelOutputHead(hindcast_hidden_dim, output_dim)
+        self.forecast_output_head = ModelOutputHead(forecast_hidden_dim, output_dim)
 
-    def _prepare_input(self, static_features, dynamic_features):
-        static_embedded = self.static_embedding(static_features)
-        dynamic_embedded = (
-            dynamic_features
-            if self.use_paper_model
-            else self.dynamic_embedding(dynamic_features)
-        )
+    def _perform_embedding(self, static_features, dynamic_features):
+        if self.dynamic_embedding_dim > 0:
+            dynamic_embedded = self.dynamic_embedding(dynamic_features)
+        else:
+            dynamic_embedded = dynamic_features
+        if self.static_embedding_dim > 0:
+            static_embedded = self.static_embedding(static_features)
+        else:
+            static_embedded = static_features
         static_embedded = static_embedded.unsqueeze(1).expand(
             -1, dynamic_embedded.size(1), -1
         )
@@ -106,26 +171,25 @@ class SequentialForecastLSTM(nn.Module):
     def forward(self, *src):
         (
             hindcast_features,
-            static_features_hindcast,
             forecast_features,
-            static_features_forecast,
+            static_features,
         ) = src
 
         # Hindcast LSTM
-        hindcast_input = self._prepare_input(
-            static_features_hindcast, hindcast_features
-        )
-        _, h, c = self.hindcast_lstm(hindcast_input)
+        hindcast_input = self._perform_embedding(static_features, hindcast_features)
+        hincast_output, h, c = self.hindcast_lstm(hindcast_input)
 
-        if self.use_paper_model:
-            # HiddenStateTransfer
-            h, c = self.hiddenstatetransfer(h, c)
+        if self.hindcast_output_window > 0:
+            hincast_output = self.hindcast_output_head(
+                hincast_output[:, -self.hindcast_output_window :, :]
+            )
+
+        h, c = self.hiddenstatetransfer(h, c)
 
         # Forecast LSTM
-        forecast_input = self._prepare_input(
-            static_features_forecast, forecast_features
-        )
+        forecast_input = self._perform_embedding(static_features, forecast_features)
         forecast_output = self.forecast_lstm(forecast_input, h, c)
-
-        output = self.output_head(forecast_output)
-        return output
+        forecast_output = self.forecast_output_head(forecast_output)
+        if self.hindcast_output_window > 0:
+            forecast_output = torch.cat([hincast_output, forecast_output], dim=1)
+        return forecast_output

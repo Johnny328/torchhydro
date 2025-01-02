@@ -1,10 +1,10 @@
 """
 Author: Wenyu Ouyang
 Date: 2021-12-31 11:08:29
-LastEditTime: 2024-11-05 10:46:09
+LastEditTime: 2025-01-02 13:43:10
 LastEditors: Wenyu Ouyang
 Description: Config for hydroDL
-FilePath: \torchhydro\torchhydro\configs\config.py
+FilePath: /torchhydro/torchhydro/configs/config.py
 Copyright (c) 2021-2022 Wenyu Ouyang. All rights reserved.
 """
 
@@ -291,17 +291,18 @@ def default_config_file():
             "metrics": ["NSE", "RMSE", "R2", "KGE", "FHV", "FLV"],
             "fill_nan": "no",
             "explainer": None,
-            # rolling means testdataloader will sample data with overlap time
-            # rolling is False meaning each time has only one output for one basin one variable
-            # rolling is True and the time_window must be prec_window+horizon now!
-            # for example, data is |1|2|3|4|  time_window=2 then the samples are |1|2|, |2|3| and |3|4|
-            "rolling": False,
+            # rolling is 0 means decoder-only model's prediction -- each period has one prediction
+            # when rolling>0, such as 1, means perform forecasting each step after 1 period.
+            # For example, at 8:00am we perform one forecasting and our time-step is 3h,
+            # rolling=1 means 11:00, 14:00, 17:00 ..., we will perform forecasting
+            "rolling": 0,
             "calc_metrics": True,
         },
     }
 
 
 def cmd(
+    project_dir=None,
     sub=None,
     source_cfgs=None,
     scaler=None,
@@ -376,6 +377,13 @@ def cmd(
     """input args from cmd"""
     parser = argparse.ArgumentParser(
         description="Train a Time-Series Deep Learning Model for Basins"
+    )
+    parser.add_argument(
+        "--project_dir",
+        dest="project_dir",
+        help="the project directory where you put your results in",
+        default=project_dir,
+        type=str,
     )
     parser.add_argument(
         "--sub", dest="sub", help="subset and sub experiment", default=sub, type=str
@@ -744,9 +752,9 @@ def cmd(
     parser.add_argument(
         "--rolling",
         dest="rolling",
-        help="if False, evaluate 1-period output with a rolling window",
+        help="0 means no rolling; rolling>0, such as 1, means perform forecasting once after 1 period. For example, at 8:00am we perform one forecasting and our time-step is 3h, rolling=1 means 11:00, 14:00, 17:00 ..., we will perform forecasting",
         default=rolling,
-        type=bool,
+        type=int,
     )
     parser.add_argument(
         "--model_loader",
@@ -881,7 +889,10 @@ def update_cfg(cfg_file, new_args):
         in-place operation for cfg_file
     """
     print("update config file")
-    project_dir = os.getcwd()
+    if new_args.project_dir is not None:
+        project_dir = new_args.project_dir
+    else:
+        project_dir = os.getcwd()
     result_dir = os.path.join(project_dir, "results")
     if os.path.exists(result_dir) is False:
         os.makedirs(result_dir)
@@ -1042,12 +1053,12 @@ def update_cfg(cfg_file, new_args):
                 "forecast_length"
             ]
         # The following two configurations are for encoder-decoder models' seq2seqdataset
-        if "prec_window" in new_args.model_hyperparam.keys():
-            cfg_file["data_cfgs"]["prec_window"] = new_args.model_hyperparam[
-                "prec_window"
+        if "hindcast_output_window" in new_args.model_hyperparam.keys():
+            cfg_file["data_cfgs"]["hindcast_output_window"] = new_args.model_hyperparam[
+                "hindcast_output_window"
             ]
         else:
-            cfg_file["data_cfgs"]["prec_window"] = 0
+            cfg_file["data_cfgs"]["hindcast_output_window"] = 0
     if new_args.batch_size is not None:
         # raise AttributeError("Please set the batch_size!!!")
         batch_size = new_args.batch_size
