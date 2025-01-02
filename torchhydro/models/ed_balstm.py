@@ -71,12 +71,12 @@ class SimpleBALSTM_EncDec(nn.Module):
         output_size,
         de_input_size,
         forecast_length,
-        prec_window=0,
+        hindcast_output_window=0,
         teacher_forcing_ratio=0,
     ):
         super(SimpleBALSTM_EncDec, self).__init__()
         self.trg_len = forecast_length
-        self.prec_window = prec_window
+        self.hindcast_output_window = hindcast_output_window
         self.teacher_forcing_ratio = teacher_forcing_ratio
         self.output_size = output_size
         self.global_encoder = GlobalEncoder(
@@ -97,7 +97,7 @@ class SimpleBALSTM_EncDec(nn.Module):
             trgs = torch.full(
                 (
                     decoder_input.shape[0],  # batch_size
-                    self.prec_window + self.trg_len,  # seq
+                    self.hindcast_output_window + self.trg_len,  # seq
                     self.output_size,  # features
                 ),
                 float("nan"),
@@ -112,7 +112,7 @@ class SimpleBALSTM_EncDec(nn.Module):
             current_input = torch.cat((current_input, p), dim=2)
             output, hidden, cell = self.decoder(current_input, hidden, cell)
             outputs.append(output.squeeze(1))
-            trg = trgs[:, (self.prec_window + t), :].unsqueeze(1)
+            trg = trgs[:, (self.hindcast_output_window + t), :].unsqueeze(1)
             valid_mask = ~torch.isnan(trg)
             random_vals = torch.rand_like(valid_mask, dtype=torch.float)
             use_teacher_forcing = (
@@ -127,7 +127,7 @@ class SimpleBALSTM_EncDec(nn.Module):
             )
 
         outputs = torch.stack(outputs, dim=1)
-        if self.prec_window > 0:
-            prec_outputs = encoder_outputs[:, -self.prec_window :, :]
+        if self.hindcast_output_window > 0:
+            prec_outputs = encoder_outputs[:, -self.hindcast_output_window :, :]
             outputs = torch.cat((prec_outputs, outputs), dim=1)
         return outputs

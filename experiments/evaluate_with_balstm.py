@@ -54,7 +54,7 @@ def create_config_LongTerm():
             "input_size_glo": 106,
             "output_size": 1,
             "input_size_sta": len(var_c),  # len(var_c) max 195
-            "prec_window": 0,
+            "hindcast_output_window": 0,
         },
         model_loader={"load_way": "latest"},
         gage_id=basins,

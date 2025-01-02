@@ -7,7 +7,7 @@ from torchhydro.trainers.trainer import train_and_evaluate
 gage_id_file = os.path.join(
     SETTING["local_data_path"]["datasets-interim"],
     "attributes",
-    "grdc_basin_id_178.csv",
+    "grdc_basin_id_809.csv",
 )
 
 basins = pd.read_csv(gage_id_file)['basin_id'].tolist()
@@ -15,7 +15,7 @@ df = pd.read_csv(
     os.path.join(
         SETTING["local_data_path"]["datasets-interim"],
         "attributes",
-        "grdc_attr_178.csv",
+        "grdc_attr_809.csv",
     )
 )
 df.drop(columns=["basin_id"], inplace=True)
@@ -41,9 +41,9 @@ df = pd.read_csv(
 )
 var_g = df.columns.tolist()
 var_g.remove("time")
-var_g.remove("A1")
+# var_g.remove("A1")
 def create_config_LongTerm():
-    project_name = os.path.join("train_with_LongTerm_Seq2Seq", "test")
+    project_name = os.path.join("train_with_LongTerm_Seq2Seq", "s809")
     config_data = default_config_file()
     args = cmd(
         sub=project_name,
@@ -53,6 +53,7 @@ def create_config_LongTerm():
         },
         ctx=[2],
         model_name="SimpleBALSTM_EncDec",
+        # model_name="Attn_SimpleBALSTM_EncDec",
         model_hyperparam={
             "output_size": 1,
             "hidden_size": 128,
@@ -63,12 +64,12 @@ def create_config_LongTerm():
             "de_input_size": len(var_c)+1+1,
             "output_size": 1,
             "input_size_sta": len(var_c),  # len(var_c) max 195
-            "prec_window": 12,
+            "hindcast_output_window": 0,
         },
         model_loader={"load_way": "latest"},
         gage_id=basins,
         batch_size=512,
-        forecast_history=12,
+        forecast_history=6,
         forecast_length=12,
         min_time_unit="ME",
         min_time_interval=1,
@@ -79,9 +80,9 @@ def create_config_LongTerm():
         dataset="EncDecBALSTMDataset",
         sampler=None,
         scaler="DapengScaler",
-        train_epoch=1,
-        save_epoch=1,
-        train_period=["1951-01-01", "1961-12-31"],
+        train_epoch=100,
+        save_epoch=10,
+        train_period=["1951-01-01", "2020-12-31"],
         test_period=["1982-01-01", "1992-12-31"],
         valid_period=["1982-01-01", "1992-12-31"],
         loss_func="NSELoss",

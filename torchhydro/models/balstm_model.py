@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 class BALSTM(nn.Module):
-    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, num_layers, dropout=0.5,prec_window=0):
+    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, num_layers, dropout=0.5,hindcast_output_window=0):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
@@ -182,7 +182,7 @@ class VanillaLSTM(nn.Module):
 #     '''
 #     A simplified version of balstm
 #     '''
-#     def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5,num_layers=0,prec_window=0):
+#     def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5,num_layers=0,hindcast_output_window=0):
 #         super(SimpleBALSTM, self).__init__()
 #         self.hidden_size = hidden_size
 #         self.W_xs1 = nn.Linear(input_size_sta, hidden_size)
@@ -225,7 +225,7 @@ class VanillaLSTM(nn.Module):
 #         return out, (h_t, c_t)
     
 class SimpleBALSTM(nn.Module):
-    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5, num_layers=1, prec_window=0):
+    def __init__(self, input_size_sta, input_size_dyn, input_size_glo, hidden_size, output_size, dropout=0.5, num_layers=1, hindcast_output_window=0):
         super(SimpleBALSTM, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers

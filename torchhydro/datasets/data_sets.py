@@ -1095,7 +1095,7 @@ class EncDecBALSTMDataset(BALSTMDataset):
         basin, time = self.lookup_table[item]
         rho = self.rho
         horizon = self.horizon
-        prec = self.data_cfgs.get("prec_window", 0)
+        prec = self.data_cfgs.get("hindcast_output_window", 0)
         p = self.x[basin, time : time + rho + horizon , 0].reshape(-1, 1)
         xt = self.x[basin, time : time + rho, :]
         xg = self.xg[basin, time : time + rho, :]
