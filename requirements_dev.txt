@@ -7,10 +7,12 @@ intake
 torch
 torchvision
 tensorboard
+torchaudio
 shap
 kaggle
 
 pytest
+pytest-mock
 
 hydrodatasource
 

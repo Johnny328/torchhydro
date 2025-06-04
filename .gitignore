@@ -135,5 +135,5 @@ mlruns/
 .vscode/
 .idea
 results/
-data/*
-/tests/output_data.xlsx
+data/
+scripts/

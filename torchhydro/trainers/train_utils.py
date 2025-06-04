@@ -1,48 +1,120 @@
 """
 Author: Wenyu Ouyang
 Date: 2024-04-08 18:16:26
-LastEditTime: 2024-07-10 19:48:58
+LastEditTime: 2025-05-15 16:24:12
 LastEditors: Wenyu Ouyang
 Description: Some basic functions for training
-FilePath: /torchhydro/torchhydro/trainers/train_utils.py
+FilePath: \torchhydro\torchhydro\trainers\train_utils.py
 Copyright (c) 2024-2024 Wenyu Ouyang. All rights reserved.
 """
 
 import copy
+import fnmatch
 import os
+import re
+import shutil
 from functools import reduce
-
+from pathlib import Path
+import pandas as pd
+from tqdm import tqdm
 import numpy as np
+import xarray as xr
 import torch
 import torch.optim as optim
-import xarray as xr
-from hydroutils.hydro_stat import stat_error
 from torch.utils.data import DataLoader
-from tqdm import tqdm
-import dask
+
+from hydroutils.hydro_stat import stat_error
+from hydroutils.hydro_file import (
+    get_lastest_file_in_a_dir,
+    unserialize_json,
+    get_latest_file_in_a_lst,
+)
+
 from torchhydro.models.crits import GaussianLoss
 
 
-def model_infer(seq_first, device, model, xs, ys):
+def _rolling_preds_for_once_eval(
+    batch_shape,
+    rho,
+    forecast_length,
+    rolling_stride,
+    hindcast_output_window,
+    the_array,
+):
+    """
+    Get predictions to perform rolling evaluation: restore the prediction results to the original time series length.
+
+    This function is used to restore the rolling prediction results of the model to the original time series length.
+    It assumes that the length of the rolling window is equal to the forecast length, and that there is only one prediction value for each time step.
+    The function calculates the restored prediction results based on the given batch shape, historical window length, forecast length, rolling window length,
+    hindcast output window length, and prediction result array.
+
+    Parameters
+    ----------
+    batch_shape : tuple
+        The shape of the batch, containing three elements (ngrid, nt, nf), representing the number of grids, the number of time steps, and the number of features, respectively.
+    rho : int
+        The length of the historical window.
+    forecast_length : int
+        The length of the forecast.
+    rolling_stride : int
+        The stride of the rolling
+    hindcast_output_window : int
+        The length of the hindcast output window.
+    the_array : np.ndarray
+        The prediction result array, with the shape (samples, window_size, nf), where samples represent the number of samples,
+        window_size represents the size of the window, and nf represents the number of features.
+
+    Returns
+    -------
+    np.ndarray
+        The restored prediction result array, with the shape (ngrid, recover_len, nf), where recover_len represents the length of the restored time steps.
+
+    Raises
+    ------
+    NotImplementedError
+        Raised when the rolling window length is not equal to the forecast length.
+    """
+    ngrid, nt, nf = batch_shape
+    if rolling_stride != forecast_length:
+        # TODO: now we only guarantee each time has only one value,
+        # so we directly reshape the data rather than a real rolling
+        raise NotImplementedError(
+            "rolling should be equal to forecast_length in data_cfgs now, others are not supported yet"
+        )
+    window_size = hindcast_output_window + forecast_length
+    recover_len = nt - rho + hindcast_output_window
+    samples = int(the_array.shape[0] / ngrid)
+    the_array_ = np.full((ngrid, recover_len, nf), np.nan)
+    # recover the_array to pred_
+    the_array_4d = the_array.reshape(ngrid, samples, window_size, nf)
+    for i in range(ngrid):
+        for j in range(0, recover_len - window_size + 1, window_size):
+            the_array_[i, j : j + window_size, :] = the_array_4d[i, j, :, :]
+    return the_array_.reshape(ngrid, recover_len, nf)
+
+
+def model_infer(seq_first, device, model, xs, ys,src_lens=None, trg_lens=None):
     """_summary_
 
     Parameters
     ----------
-    seq_first : _type_
-        _description_
-    device : _type_
-        _description_
-    model : _type_
-        _description_
+    seq_first : bool
+        if True, the input data is sequence first
+    device : torch.device
+        cpu or gpu
+    model : torch.nn.Module
+        the model
     xs : list or tensor
         xs is always batch first
     ys : tensor
-        _description_
+        observed data
 
     Returns
     -------
-    _type_
-        _description_
+    tuple[torch.Tensor, torch.Tensor]
+        first is the observed data, second is the predicted data;
+        both tensors are batch first
     """
     if type(xs) is list:
         xs = [
@@ -61,68 +133,21 @@ def model_infer(seq_first, device, model, xs, ys):
                 else xs.to(device)
             )
         ]
-
-    ys = (
-        ys.permute([1, 0, 2]).to(device)
-        if seq_first and ys.ndim == 3
-        else ys.to(device)
-    )
-
-    if len(xs) == 2:
-        # Extract the normalized and original rainfall
-        x_normalized = xs[0]  # Normalized rainfall
-        x_origin = xs[1]  # Original rainfall (used for regulation factor calculation)
-        output = model(x_normalized, x_origin)
-    else:
-        output = model(*xs)
-
+    if ys is not None:
+        ys = (
+            ys.permute([1, 0, 2]).to(device)
+            if seq_first and ys.ndim == 3
+            else ys.to(device)
+        )
+    output = model(*xs,src_lens, trg_lens)
     if type(output) is tuple:
         # Convention: y_p must be the first output of model
         output = output[0]
     if seq_first:
         output = output.transpose(0, 1)
-        ys = ys.transpose(0, 1)
+        if ys is not None:
+            ys = ys.transpose(0, 1)
     return ys, output
-
-
-def denormalize4eval(
-    validation_data_loader, output, labels, length=0, long_seq_pred=True
-):
-    target_scaler = validation_data_loader.dataset.target_scaler
-    target_data = target_scaler.data_target
-    # the units are dimensionless for pure DL models
-    units = {k: "dimensionless" for k in target_data.attrs["units"].keys()}
-    if target_scaler.pbm_norm:
-        units = {**units, **target_data.attrs["units"]}
-    if not long_seq_pred:
-        horizon = target_scaler.data_cfgs["forecast_length"]
-        rho = target_scaler.data_cfgs["forecast_history"]
-        selected_time_points = target_data.coords["time"][
-            length + rho : length - horizon
-        ]
-    else:
-        warmup_length = validation_data_loader.dataset.warmup_length
-        selected_time_points = target_data.coords["time"][warmup_length:]
-
-    selected_data = target_data.sel(time=selected_time_points)
-    preds_xr = target_scaler.inverse_transform(
-        xr.DataArray(
-            output.transpose(2, 0, 1),
-            dims=selected_data.dims,
-            coords=selected_data.coords,
-            attrs={"units": units},
-        )
-    )
-    obss_xr = target_scaler.inverse_transform(
-        xr.DataArray(
-            labels.transpose(2, 0, 1),
-            dims=selected_data.dims,
-            coords=selected_data.coords,
-            attrs={"units": units},
-        )
-    )
-
-    return preds_xr, obss_xr
 
 
 class EarlyStopper(object):
@@ -195,6 +220,214 @@ def calculate_and_record_metrics(
     return eval_log
 
 
+def get_preds_to_be_eval(
+    valorte_data_loader,
+    evaluation_cfgs,
+    output,
+    labels,
+):
+    """
+    Get prediction results prepared for evaluation:
+    the denormalized data without metrics by different eval ways
+
+    Parameters
+    ----------
+    valorte_data_loader : DataLoader
+        validation or test data loader
+    evaluation_cfgs : dict
+        evaluation configs
+    output : np.ndarray
+        model output
+    labels : np.ndarray
+        model target
+
+    Returns
+    -------
+    tuple
+        _description_
+    """
+    evaluator = evaluation_cfgs["evaluator"]
+    # this test_rolling means how we perform prediction during testing
+    test_rolling = evaluation_cfgs["rolling"]
+    batch_size = valorte_data_loader.batch_size
+    target_scaler = valorte_data_loader.dataset.target_scaler
+    target_data = target_scaler.data_target
+    rho = valorte_data_loader.dataset.rho
+    horizon = valorte_data_loader.dataset.horizon
+    hindcast_output_window = target_scaler.data_cfgs["hindcast_output_window"]
+    nf = valorte_data_loader.dataset.noutputvar  # number of features
+    nt = valorte_data_loader.dataset.nt  # number of time steps
+    basin_num = len(target_data.basin)
+    if evaluator["eval_way"] == "once":
+        stride = evaluator["stride"]
+        if stride > 0:
+            if horizon != stride:
+                raise NotImplementedError(
+                    "horizon should be equal to stride in evaluator if you chose eval_way to be once, or else you need to change the eval_way to be 1pace or rolling"
+                )
+            obs = _rolling_preds_for_once_eval(
+                (basin_num, horizon, nf),
+                rho,
+                evaluation_cfgs["forecast_length"],
+                stride,
+                hindcast_output_window,
+                target_data.reshape(basin_num, horizon, nf),
+            )
+            pred = _rolling_preds_for_once_eval(
+                (basin_num, horizon, nf),
+                rho,
+                evaluation_cfgs["forecast_length"],
+                stride,
+                hindcast_output_window,
+                output.reshape(batch_size, horizon, nf),
+            )
+        else:
+            if test_rolling > 0:
+                raise RuntimeError(
+                    "please set rolling to 0 when you chose eval way as once and stride=0"
+                )
+            obs = labels.reshape(basin_num, -1, nf)
+            pred = output.reshape(basin_num, -1, nf)
+    elif evaluator["eval_way"] == "1pace":
+        if test_rolling < 1:
+            raise NotImplementedError(
+                "rolling should be larger than 0 if you chose eval_way to be 1pace"
+            )
+        pace_idx = evaluator["pace_idx"]
+        # for 1pace with pace_idx meaning which value of output was chosen to show
+        # 1st, we need to transpose data to 4-dim to show the whole data
+        pred = _recover_samples_to_basin(output, valorte_data_loader, pace_idx)
+        obs = _recover_samples_to_basin(labels, valorte_data_loader, pace_idx)
+    elif evaluator["eval_way"] == "rolling":
+        # 获取滚动预测所需的参数
+        stride = evaluator.get("stride", 1)
+        if stride != 1:
+            raise NotImplementedError(
+                "if stride is not equal to 1, we think it is meaningless"
+            )
+        # 重组预测结果和观测值
+        basin_num = len(target_data.basin)
+
+        # 使用_rolling_evaluate函数进行滚动评估
+        pred = _recover_samples_to_4d(
+            (basin_num, nt, nf),
+            target_scaler.rho,
+            stride,
+            hindcast_output_window,
+            output.reshape(-1, output.shape[1], nf),
+        )
+
+        obs = _recover_samples_to_4d(
+            (basin_num, nt, nf),
+            target_scaler.rho,
+            stride,
+            hindcast_output_window,
+            labels.reshape(-1, labels.shape[1], nf),
+        )
+
+    else:
+        raise ValueError("eval_way should be rolling or 1pace")
+    valte_dataset = valorte_data_loader.dataset
+    preds_xr = valte_dataset.denormalize(pred)
+    obss_xr = valte_dataset.denormalize(obs)
+    return obss_xr, preds_xr
+
+
+def _recover_samples_to_4d(arr_3d, valorte_data_loader, stride):
+    """Reorganize the 3D prediction results to 4D
+
+    Prepare rolling result for the following two ways to calculate rolling evaluation results:
+    1. We can organize data according to forecast horizons, with each horizon having a set of evaluation results
+    2. For each rolling prediction result, calculate a set of metrics, with each basin having one set of metrics, and all basins stored in a 2D array containing all metrics.
+
+    TODO: to be finished
+
+    Parameters
+    ----------
+    arr_3d : np.ndarray
+        A 3D prediction array with the shape (total number of samples, number of time steps, number of features).
+    valorte_data_loader: DataLoader
+        The corresponding data loader used to obtain the basin-time index mapping.
+    stride: int
+        The stride of the rolling.
+
+    Returns
+        -------
+        np.ndarray
+            The reorganized 4D array with the shape (number of basins, length of time, forecast steps, number of features).
+    """
+    dataset = valorte_data_loader.dataset
+    batch_size = valorte_data_loader.batch_size
+    basin_num = len(dataset.t_s_dict["sites_id"])
+    nt = dataset.nt
+    rho = dataset.rho
+    warmup_len = dataset.warmup_length
+    horizon = dataset.horizon
+    nf = dataset.noutputvar
+
+    # Initialize the 4D array with NaN values
+    basin_array = np.full((basin_num, nt - warmup_len - rho, horizon, nf), np.nan)
+
+    for sample_idx in range(arr_3d.shape[0]):
+        # Get the basin and start time index corresponding to this sample
+        basin, start_time = dataset.lookup_table[sample_idx]
+        # Take the value at the last time step of this sample (at the position of rho + horizon)
+        value = arr_3d[sample_idx, warmup_len + rho :, :]
+        # Calculate the time position in the result array
+        result_time_idx = start_time + warmup_len + stride * (sample_idx % batch_size)
+        # Fill in the corresponding position
+        basin_array[basin, result_time_idx, :, :] = value
+
+    return basin_array
+
+
+def _recover_samples_to_basin(arr_3d, valorte_data_loader, pace_idx):
+    """Reorganize the 3D prediction results by basin
+
+    Parameters
+    ----------
+    arr_3d : np.ndarray
+        A 3D prediction array with the shape (total number of samples, number of time steps, number of features).
+    valorte_data_loader: DataLoader
+        The corresponding data loader used to obtain the basin-time index mapping.
+    pace_idx: int
+        Which time step was chosen to show.
+        -1 means we chose the final value for one prediction
+        positive values means we chose the results during horzion periods
+        we ignore 0, because it may lead to confusion. 1 means the 1st horizon period
+        TODO: when hindcast_output is not None, this part need to be modified.
+
+    Returns
+        -------
+        np.ndarray
+            The reorganized 3D array with the shape (number of basins, length of time, number of features).
+    """
+    dataset = valorte_data_loader.dataset
+    basin_num = len(dataset.t_s_dict["sites_id"])
+    nt = dataset.nt
+    rho = dataset.rho
+    warmup_len = dataset.warmup_length
+    horizon = dataset.horizon
+    nf = dataset.noutputvar
+
+    basin_array = np.full((basin_num, nt, nf), np.nan)
+
+    for sample_idx in range(arr_3d.shape[0]):
+        # Get the basin and start time index corresponding to this sample
+        basin, start_time = dataset.lookup_table[sample_idx]
+        # Calculate the time position in the result array
+        if pace_idx < 0:
+            value = arr_3d[sample_idx, pace_idx, :]
+            result_time_idx = start_time + warmup_len + rho + horizon + pace_idx
+        else:
+            value = arr_3d[sample_idx, pace_idx - 1, :]
+            result_time_idx = start_time + warmup_len + rho + pace_idx - 1
+        # Fill in the corresponding position
+        basin_array[basin, result_time_idx, :] = value
+
+    return basin_array
+
+
 def evaluate_validation(
     validation_data_loader,
     output,
@@ -225,83 +458,26 @@ def evaluate_validation(
     if isinstance(fill_nan, list) and len(fill_nan) != len(target_col):
         raise ValueError("Length of fill_nan must be equal to length of target_col.")
     eval_log = {}
-    # probably because of DistSampler
-    # batch_size = len(validation_data_loader.dataset) / len(validation_data_loader.dataset.basins)
-    batch_size = validation_data_loader.batch_size
     evaluation_metrics = evaluation_cfgs["metrics"]
-    if not evaluation_cfgs["long_seq_pred"]:
-        target_scaler = validation_data_loader.dataset.target_scaler
-        target_data = target_scaler.data_target
-        basin_num = len(target_data.basin)
-        horizon = target_scaler.data_cfgs["forecast_length"]
-        prec = target_scaler.data_cfgs["prec_window"]
-        for i, col in enumerate(target_col):
-            delayed_tasks = []
-            for length in range(horizon):
-                delayed_task = len_denormalize_delayed(
-                    prec,
-                    length,
-                    output,
-                    labels,
-                    basin_num,
-                    batch_size,
-                    target_col,
-                    validation_data_loader,
-                    col,
-                    evaluation_cfgs["long_seq_pred"],
-                )
-                delayed_tasks.append(delayed_task)
-            obs_pred_results = dask.compute(*delayed_tasks)
-            obs_list, pred_list = zip(*obs_pred_results)
-            obs = np.concatenate(obs_list, axis=1)
-            pred = np.concatenate(pred_list, axis=1)
-            eval_log = calculate_and_record_metrics(
-                obs,
-                pred,
-                evaluation_metrics,
-                col,
-                fill_nan[i] if isinstance(fill_nan, list) else fill_nan,
-                eval_log,
-            )
-
-    else:
-        preds_xr, obss_xr = denormalize4eval(validation_data_loader, output, labels)
-        for i, col in enumerate(target_col):
-            obs = obss_xr[col].to_numpy()
-            pred = preds_xr[col].to_numpy()
-            eval_log = calculate_and_record_metrics(
-                obs,
-                pred,
-                evaluation_metrics,
-                col,
-                fill_nan[i] if isinstance(fill_nan, list) else fill_nan,
-                eval_log,
-            )
-    return eval_log
-
-
-@dask.delayed
-def len_denormalize_delayed(
-    prec,
-    length,
-    output,
-    labels,
-    basin_num,
-    batch_size,
-    target_col,
-    validation_data_loader,
-    col,
-    long_seq_pred,
-):
-    # batch_size != output.shape[0]
-    o = output[:, length + prec, :].reshape(basin_num, batch_size, len(target_col))
-    l = labels[:, length + prec, :].reshape(basin_num, batch_size, len(target_col))
-    preds_xr, obss_xr = denormalize4eval(
-        validation_data_loader, o, l, length, long_seq_pred
+    obss_xr, preds_xr = get_preds_to_be_eval(
+        validation_data_loader,
+        evaluation_cfgs,
+        output,
+        labels,
     )
-    obs = obss_xr[col].to_numpy()
-    pred = preds_xr[col].to_numpy()
-    return obs, pred
+    for i, col in enumerate(target_col):
+        obs = obss_xr[col].to_numpy()
+        pred = preds_xr[col].to_numpy()
+        # eval_log will be updated rather than completely replaced, no need to use eval_log["key"]
+        eval_log = calculate_and_record_metrics(
+            obs,
+            pred,
+            evaluation_metrics,
+            col,
+            fill_nan[i] if isinstance(fill_nan, list) else fill_nan,
+            eval_log,
+        )
+    return eval_log
 
 
 def compute_loss(
@@ -395,15 +571,22 @@ def torch_single_train(
     seq_first = which_first_tensor != "batch"
     pbar = tqdm(data_loader)
 
-    for _, (src, trg) in enumerate(pbar):
-        # iEpoch starts from 1, iIter starts from 0, we hope both start from 1
-        trg, output = model_infer(seq_first, device, model, src, trg)
-
+    for _, batch in enumerate(pbar):
+        if len(batch) == 4:
+            src, trg, src_lens, trg_lens = batch
+            trg, output = model_infer(seq_first, device, model, src, trg, src_lens, trg_lens)
+        elif len(batch) == 2:
+            src, trg = batch
+            # 如果没有 src_lens 和 trg_lens，可以传递 None 或默认值
+            trg, output = model_infer(seq_first, device, model, src, trg, None, None)
+        else:
+            raise ValueError(f"Unsupported batch format with {len(batch)} elements")
         loss = compute_loss(trg, output, criterion, **kwargs)
         if loss > 100:
             print("Warning: high loss detected")
         if torch.isnan(loss):
-            continue
+            raise ValueError("nan loss detected")
+            # continue
         loss.backward()  # Backpropagate to compute the current gradient
         opt.step()  # Update network parameters based on gradients
         model.zero_grad()  # clear gradient
@@ -427,7 +610,7 @@ def compute_validation(
     data_loader: DataLoader,
     device: torch.device = None,
     **kwargs,
-) -> float:
+):
     """
     Function to compute the validation loss metrics
 
@@ -451,18 +634,35 @@ def compute_validation(
     seq_first = kwargs["which_first_tensor"] != "batch"
     obs = []
     preds = []
+    valid_loss = 0.0
+    obs_final = None
+    pred_final = None
     with torch.no_grad():
-        for src, trg in data_loader:
+        iter_num = 0
+        for src, trg in tqdm(data_loader, desc="Evaluating", total=len(data_loader)):
             trg, output = model_infer(seq_first, device, model, src, trg)
             obs.append(trg)
             preds.append(output)
+            valid_loss_ = compute_loss(trg, output, criterion)
+            if torch.isnan(valid_loss_):
+                # for not-train mode, we may get all nan data for trg
+                # so we skip this batch
+                continue
+            valid_loss = valid_loss + valid_loss_.item()
+            iter_num = iter_num + 1
+            # clear memory to save GPU memory
+            if obs_final is None:
+                obs_final = trg.detach().cpu()
+                pred_final = output.detach().cpu()
+            else:
+                obs_final = torch.cat([obs_final, trg.detach().cpu()], dim=0)
+                pred_final = torch.cat([pred_final, output.detach().cpu()], dim=0)
+            del trg, output
+            torch.cuda.empty_cache()
         # first dim is batch
-        obs_final = torch.cat(obs, dim=0)
-        pred_final = torch.cat(preds, dim=0)
-
-        valid_loss = compute_loss(obs_final, pred_final, criterion)
-    y_obs = obs_final.detach().cpu().numpy()
-    y_pred = pred_final.detach().cpu().numpy()
+    valid_loss = valid_loss / iter_num
+    y_obs = obs_final.numpy()
+    y_pred = pred_final.numpy()
     return y_obs, y_pred, valid_loss
 
 
@@ -478,6 +678,129 @@ def average_weights(w):
     return w_avg
 
 
+def _find_min_validation_loss_epoch(data):
+    """
+    Find the epoch with the minimum validation loss from the training log data.
+
+    Parameters
+    ----------
+    data : list of dict
+        A list of dictionaries containing training information, where each dictionary corresponds to an epoch.
+
+    Returns
+    -------
+    tuple
+        (min_epoch, min_val_loss) The epoch number with the minimum validation loss and its corresponding loss value.
+        If the data is empty or no valid validation loss can be found, returns (None, None).
+    """
+    if not data:
+        print("Input data is empty.")
+        return None, None
+
+    df = pd.DataFrame(data)
+
+    if "epoch" not in df.columns or "validation_loss" not in df.columns:
+        print("Input data is missing 'epoch' or 'validation_loss' fields.")
+        return None, None
+
+    # Define a function to extract the numerical value from `validation_loss`
+    def extract_val_loss(val_loss_str):
+        """
+        Extract the numerical part of the validation loss from the string.
+
+        Parameters
+        ----------
+        val_loss_str : str
+            A string in the form "tensor(4.1230, device='cuda:2')".
+
+        Returns
+        -------
+        float
+            The extracted validation loss value. If extraction fails, returns positive infinity.
+        """
+        match = re.search(r"tensor\(([\d\.]+)", val_loss_str)
+        if match:
+            try:
+                return float(match[1])
+            except ValueError:
+                return float("inf")
+        return float("inf")
+
+    # Apply function to extract the numerical part
+    df["validation_loss_value"] = df["validation_loss"].apply(extract_val_loss)
+
+    # Check if there are valid validation losses
+    if df["validation_loss_value"].isnull().all():
+        print("All 'validation_loss' values cannot be parsed.")
+        return None, None
+
+    # Find the minimum validation loss and the corresponding epoch
+    min_idx = df["validation_loss_value"].idxmin()
+    min_row = df.loc[min_idx]
+
+    min_epoch = min_row["epoch"]
+    min_val_loss = min_row["validation_loss_value"]
+
+    return min_epoch, min_val_loss
+
+
+def read_pth_from_model_loader(model_loader, model_pth_dir):
+    if model_loader["load_way"] == "specified":
+        test_epoch = model_loader["test_epoch"]
+        weight_path = os.path.join(model_pth_dir, f"model_Ep{str(test_epoch)}.pth")
+    elif model_loader["load_way"] == "best":
+        weight_path = os.path.join(model_pth_dir, "best_model.pth")
+        if not os.path.exists(weight_path):
+            # read log file and find the best model
+            log_json = read_torchhydro_log_json_file(model_pth_dir)
+            if "run" not in log_json:
+                raise ValueError(
+                    "No best model found. You have to train the model first."
+                )
+            min_epoch, min_val_loss = _find_min_validation_loss_epoch(log_json["run"])
+            try:
+                shutil.copy2(
+                    os.path.join(model_pth_dir, f"model_Ep{str(min_epoch)}.pth"),
+                    os.path.join(model_pth_dir, "best_model.pth"),
+                )
+            except FileNotFoundError:
+                # TODO: add a recursive call to find the saved best model
+                raise FileNotFoundError(
+                    f"The best model's weight file {os.path.join(model_pth_dir, f'model_Ep{str(min_epoch)}.pth')} does not exist."
+                )
+    elif model_loader["load_way"] == "latest":
+        weight_path = get_lastest_file_in_a_dir(model_pth_dir)
+    elif model_loader["load_way"] == "pth":
+        weight_path = model_loader["pth_path"]
+    else:
+        raise ValueError("Invalid load_way")
+    if not os.path.exists(weight_path):
+        raise ValueError(f"Model file {weight_path} does not exist.")
+    return weight_path
+
+
+def get_lastest_logger_file_in_a_dir(dir_path):
+    """Get the last logger file in a directory
+
+    Parameters
+    ----------
+    dir_path : str
+        the directory
+
+    Returns
+    -------
+    str
+        the path of the logger file
+    """
+    pattern = r"^\d{1,2}_[A-Za-z]+_\d{6}_\d{2}(AM|PM)\.json$"
+    pth_files_lst = [
+        os.path.join(dir_path, file)
+        for file in os.listdir(dir_path)
+        if re.match(pattern, file)
+    ]
+    return get_latest_file_in_a_lst(pth_files_lst)
+
+
 def cellstates_when_inference(seq_first, data_cfgs, pred):
     """get cell states when inference"""
     cs_out = (
@@ -487,7 +810,75 @@ def cellstates_when_inference(seq_first, data_cfgs, pred):
     )
     cs_out_lst = [cs_out]
     cell_state = reduce(lambda a, b: np.vstack((a, b)), cs_out_lst)
-    np.save(os.path.join(data_cfgs["test_path"], "cell_states.npy"), cell_state)
+    np.save(os.path.join(data_cfgs["case_dir"], "cell_states.npy"), cell_state)
     # model.zero_grad()
     torch.cuda.empty_cache()
     return pred, cell_state
+
+
+def read_torchhydro_log_json_file(cfg_dir):
+    json_files_lst = []
+    json_files_ctime = []
+    for file in os.listdir(cfg_dir):
+        if (
+            fnmatch.fnmatch(file, "*.json")
+            and "_stat" not in file  # statistics json file
+            and "_dict" not in file  # data cache json file
+        ):
+            json_files_lst.append(os.path.join(cfg_dir, file))
+            json_files_ctime.append(os.path.getctime(os.path.join(cfg_dir, file)))
+    sort_idx = np.argsort(json_files_ctime)
+    cfg_file = json_files_lst[sort_idx[-1]]
+    return unserialize_json(cfg_file)
+
+
+def get_latest_pbm_param_file(param_dir):
+    """Get the latest parameter file of physics-based models in the current directory.
+
+    Parameters
+    ----------
+    param_dir : str
+        The directory of parameter files.
+
+    Returns
+    -------
+    str
+        The latest parameter file.
+    """
+    param_file_lst = [
+        os.path.join(param_dir, f)
+        for f in os.listdir(param_dir)
+        if f.startswith("pb_params") and f.endswith(".csv")
+    ]
+    param_files = [Path(f) for f in param_file_lst]
+    param_file_names_lst = [param_file.stem.split("_") for param_file in param_files]
+    ctimes = [
+        int(param_file_names[param_file_names.index("params") + 1])
+        for param_file_names in param_file_names_lst
+    ]
+    return param_files[ctimes.index(max(ctimes))] if ctimes else None
+
+
+def get_latest_tensorboard_event_file(log_dir):
+    """Get the latest event file in the log_dir directory.
+
+    Parameters
+    ----------
+    log_dir : str
+        The directory where the event files are stored.
+
+    Returns
+    -------
+    str
+        The latest event file.
+    """
+    event_file_lst = [
+        os.path.join(log_dir, f) for f in os.listdir(log_dir) if f.startswith("events")
+    ]
+    event_files = [Path(f) for f in event_file_lst]
+    event_file_names_lst = [event_file.stem.split(".") for event_file in event_files]
+    ctimes = [
+        int(event_file_names[event_file_names.index("tfevents") + 1])
+        for event_file_names in event_file_names_lst
+    ]
+    return event_files[ctimes.index(max(ctimes))]

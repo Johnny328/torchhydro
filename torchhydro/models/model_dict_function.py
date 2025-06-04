@@ -1,15 +1,17 @@
 """
 Author: Wenyu Ouyang
 Date: 2021-12-31 11:08:29
-LastEditTime: 2024-04-09 14:47:21
+LastEditTime: 2025-04-16 19:05:26
 LastEditors: Wenyu Ouyang
 Description: Dicts including models (which are seq-first), losses, and optims
-FilePath: \torchhydro\torchhydro\models\model_dict_function.py
+FilePath: /torchhydro/torchhydro/models/model_dict_function.py
 Copyright (c) 2021-2022 Wenyu Ouyang. All rights reserved.
 """
 from torchhydro.models.coupledlstm import CoupledLSTMModel
 from torchhydro.models.regulstm import REGULstmModel
 from torchhydro.models.inflowlstm import InflowLstmModel
+
+from torchhydro.models.dpl4hbv import DplLstmHbv, DplAnnHbv
 from torchhydro.models.cudnnlstm import (
     CudnnLstmModel,
     LinearCudnnLstmModel,
@@ -20,7 +22,15 @@ from torchhydro.models.cudnnlstm import (
 )
 from torchhydro.models.cnnlstm import CNN_LSTM_Model
 
-from torchhydro.models.simple_lstm import SimpleLSTMForecast
+from torchhydro.models.simple_lstm import (
+    LinearMultiLayerLSTMModel,
+    LinearSimpleLSTMModel,
+    MultiLayerLSTM,
+    SimpleLSTM,
+    SimpleLSTMForecast,
+    HFLSTM,
+)
+from torchhydro.models.seqforecast import SequentialForecastLSTM
 from torchhydro.models.seq2seq import (
     GeneralSeq2Seq,
     DataEnhancedModel,
@@ -40,33 +50,52 @@ from torchhydro.models.crits import (
     MASELoss,
     MAELoss,
     QuantileLoss,
+    PenalizedMSELoss,
 )
 from torchhydro.models.dpl4xaj import DplLstmXaj, DplAnnXaj
+from torchhydro.models.dpl4xaj_nn4et import DplLstmNnModuleXaj
 from torchhydro.models.spplstm import SPP_LSTM_Model, SPP_LSTM_Model_2
+from torchhydro.models.dpl4hbv import DplLstmHbv, DplAnnHbv
+from torchhydro.models.dpl4gr4j import DplLstmGr4j, DplAnnGr4j
 
 """
 Utility dictionaries to map a string to a class.
 """
 pytorch_model_dict = {
+    # LSTM models from Group MHPI
     "KuaiLSTM": CudnnLstmModel,
     "CpuLSTM": CpuLstmModel,
     "KaiLSTM": LinearCudnnLstmModel,
     "DapengCNNLSTM": CNN1dLCmodel,
     "LSTMKernel": CudnnLstmModelLstmKernel,
     "KuaiLSTMMultiOut": CudnnLstmModelMultiOutput,
+    # Differentiable models
     "DplLstmXaj": DplLstmXaj,
     "DplAttrXaj": DplAnnXaj,
+    "DplNnModuleXaj": DplLstmNnModuleXaj,
+    "DplLstmHbv": DplLstmHbv,
+    "DplAnnHbv": DplAnnHbv,
+    "DplLstmGr4j": DplLstmGr4j,
+    "DplAnnGr4j": DplAnnGr4j,
+    # LSTMs
+    "SimpleLSTM": SimpleLSTM,
+    "LinearSimpleLSTMModel": LinearSimpleLSTMModel,
+    "MultiLayerLSTM": MultiLayerLSTM,
+    "LinearMultiLayerLSTMModel": LinearMultiLayerLSTMModel,
     "SPPLSTM": SPP_LSTM_Model,
     "SimpleLSTMForecast": SimpleLSTMForecast,
+    "HFLSTM": HFLSTM,
     "SPPLSTM2": SPP_LSTM_Model_2,
+    "SeqForecastLSTM": SequentialForecastLSTM,
     "Seq2Seq": GeneralSeq2Seq,
     "CNNLSTM": CNN_LSTM_Model,
     "CoupledLSTM": CoupledLSTMModel,
     "DataEnhanced": DataEnhancedModel,
     "DataFusion": DataFusionModel,
-    "Transformer": Transformer,
     "REGULSTM": REGULstmModel,
     "INFLOWLSTM": InflowLstmModel,
+    # Transformer
+    "Transformer": Transformer,
 }
 
 pytorch_criterion_dict = {
@@ -82,6 +111,7 @@ pytorch_criterion_dict = {
     "MASELoss": MASELoss,
     "MAELoss": MAELoss,
     "QuantileLoss": QuantileLoss,
+    "MSELoss": PenalizedMSELoss,
 }
 
 pytorch_opt_dict = {"Adam": Adam, "SGD": SGD, "Adadelta": Adadelta}
