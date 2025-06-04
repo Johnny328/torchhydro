@@ -61,12 +61,21 @@ def model_infer(seq_first, device, model, xs, ys):
                 else xs.to(device)
             )
         ]
+
     ys = (
         ys.permute([1, 0, 2]).to(device)
         if seq_first and ys.ndim == 3
         else ys.to(device)
     )
-    output = model(*xs)
+
+    if len(xs) == 2:
+        # Extract the normalized and original rainfall
+        x_normalized = xs[0]  # Normalized rainfall
+        x_origin = xs[1]  # Original rainfall (used for regulation factor calculation)
+        output = model(x_normalized, x_origin)
+    else:
+        output = model(*xs)
+
     if type(output) is tuple:
         # Convention: y_p must be the first output of model
         output = output[0]

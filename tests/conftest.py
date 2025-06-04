@@ -562,7 +562,10 @@ def fusion_lstm_args():
                 os.path.join(multi_source_interim_dir, "mopex"),
             ],
         },
-        ctx=[0],
+        # 0-2
+        # 1-0
+        # 2-1
+        ctx=[2],
         model_type="Normal",
         # model_name="ChuFusion",
         model_name="CoupledLSTM",
@@ -711,8 +714,9 @@ def fusion_lstm_args():
             "RRMEDIAN": "gages",
             "SLOPE_PCT": "gages",
         },
-        train_period=["1983-10-01", "1993-09-30"],
-        test_period=["1993-10-01", "2003-09-30"],
+        train_period=["1983-10-01", "2003-09-30"],
+        test_period=["1983-10-01", "2003-09-30"],
+        #test_period=["1993-10-01", "2003-09-30"],
         dataset="PrecipitationFusionDataset",
         # sampler="KuaiSampler",
         scaler="DapengScaler",
@@ -721,15 +725,23 @@ def fusion_lstm_args():
         train_epoch=50,
         save_epoch=2,
         fill_nan=["no"],
-        model_loader={"load_way": "specified", "test_epoch": 50},
-        lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
+        # model_loader={"load_way": "specified", "test_epoch": 50},
+        model_loader={"load_way": "pth", "pth_path":
+                      os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+                      "weights_only": True},
+        # lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
+        # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001},
+        lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         which_first_tensor="sequence",
-    )
+        continue_train=0,
+        weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
 
+    )
 
 @pytest.fixture()
 def mopex_lstm_args():
-    project_name = "test_mopex/exp001"
+    # project_name = "test_mopex/exp001"
+    project_name = os.path.join("test_mopex", "exp001")
     source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
     source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
     return cmd(
@@ -890,7 +902,8 @@ def mopex_lstm_args():
             "SLOPE_PCT": "gages",
         },
         train_period=["1983-10-01", "1993-09-30"],
-        test_period=["1993-10-01", "2003-09-30"],
+        # test_period=["1993-10-01", "2003-09-30"],
+        test_period=["1983-10-01", "2003-09-30"],
         dataset="MopexPrecipitationGagesAttrFusionDataset",
         # sampler="KuaiSampler",
         scaler="DapengScaler",
@@ -899,15 +912,23 @@ def mopex_lstm_args():
         train_epoch=50,
         save_epoch=2,
         fill_nan=["no"],
-        model_loader={"load_way": "specified", "test_epoch": 2},
+        # model_loader={"load_way": "specified", "test_epoch": 2},
+        model_loader={"load_way": "pth", "pth_path":
+                      os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+                      "weights_only": True},
+        lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
+        # lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
         which_first_tensor="sequence",
+        continue_train=0,
+        weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
     )
 
 
 @pytest.fixture()
 def gages_lstm_args():
-    project_name = "test_gages/exp001"
+    # project_name = "test_gages/exp001"
+    project_name = os.path.join("test_gages", "exp001")
     source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
     source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
     return cmd(
@@ -1062,7 +1083,8 @@ def gages_lstm_args():
             "SLOPE_PCT": "gages",
         },
         train_period=["1983-10-01", "1993-09-30"],
-        test_period=["1993-10-01", "2003-09-30"],
+        # test_period=["1993-10-01", "2003-09-30"],
+        test_period=["1983-10-01", "2003-09-30"],
         dataset="StreamflowDataset",
         # sampler="KuaiSampler",
         scaler="DapengScaler",
@@ -1071,10 +1093,378 @@ def gages_lstm_args():
         train_epoch=50,
         save_epoch=2,
         fill_nan=["no"],
-        model_loader={"load_way": "specified", "test_epoch": 2},
+        # model_loader={"load_way": "specified", "test_epoch": 50},
+        model_loader={"load_way": "pth", "pth_path":
+                      os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+                      "weights_only": True},
+        # lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
+        lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
         # target_as_input=0,
         # constant_only=1,
         # warmup_length=30,
         which_first_tensor="sequence",
+        continue_train=0,
+        weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+        # continue_train=0,
+        # weight_path="C:\Users\jgchu\source\repos\torchhydro\tests\results\test_mopex\exp001",
     )
+
+@pytest.fixture()
+def reservoirs_lstm_args():
+    # project_name = "test_reservoirs/exp001"
+    project_name = os.path.join("test_reservoirs", "exp001")
+    source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
+    source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
+    return cmd(
+        sub=project_name,
+        source_cfgs={
+            "source_names": "reservoirs",
+            "source_paths": os.path.join(source_origin_dir, "reservoirs"),
+        },
+        # 0-2
+        # 1-0
+        # 2-1
+        ctx=[1],
+        model_type="Normal",
+        # model_name="ChuFusion",
+        model_name="KuaiLSTM",
+        # model_hyperparam={
+        #     "num_sources": 4,
+        #     "out_channels": 2,
+        #     "transformer_heads": 4,
+        #     "transformer_layers": 2,
+        #     "n_input_features": 23,
+        #     "n_output_features": 2,
+        #     "n_hidden_states": 64,
+        #     "layer_hidden_size": 32,
+        #     "kernel_size_hydrograph": 3,
+        #     "warmup_length": 365,
+        #     "param_limit_func": "sigmoid",
+        #     "param_test_way": "final",
+        #     "source_book": "HF",
+        #     "source_type": "sources",
+        #     "kernel_size": 3,
+        #     "padding": 1,
+        # },
+        model_hyperparam={
+            "n_input_features": 4,
+            "n_output_features": 1,
+            "n_hidden_states": 256,
+        },
+        loss_func="RMSESum",
+        gage_id_file=os.path.join(source_origin_dir, "reservoir_id(1).csv"),
+        batch_size=32,
+        forecast_history=0,
+        forecast_length=365,
+        # rho=365,
+        var_t=[
+            "Netinflow",
+            "Storage",
+        ],
+        # var_t_type=["nldas"],
+        var_out=["Release"],
+        var_c=[
+            "Max_storage",
+            "Main_use",
+        ],
+        var_to_source_map={
+            "NetInflow": "reservoirs",
+            "Storage": "reservoirs",
+            "Release": "reservoirs",
+            "Max_storage": "reservoirs",
+            "Main_use": "reservoirs",
+        },
+        train_period=["1980-01-01", "2012-12-31"],
+        # test_period=["1993-10-01", "2003-09-30"],
+        test_period=["2013-01-01", "2020-12-31"],
+        dataset="ReservoirsDataset",
+        # sampler="KuaiSampler",
+        scaler="DapengScaler",
+        n_output=1,
+        opt="Adam",
+        train_epoch=50,
+        save_epoch=2,
+        fill_nan=["no"],
+        model_loader={"load_way": "specified", "test_epoch": 2},
+        # model_loader={"load_way": "pth", "pth_path":
+        #     os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+        #               "weights_only": True},
+        # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
+        # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
+        lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
+        which_first_tensor="sequence",
+        # continue_train=0,
+        # weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+    )
+
+@pytest.fixture()
+def reservoir_lstm_args():
+    # project_name = "test_reservoir/exp001"
+    project_name = os.path.join("test_reservoir", "exp001")
+    source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
+    source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
+    return cmd(
+        sub=project_name,
+        source_cfgs={
+            "source_names": "reservoir",
+            "source_paths": os.path.join(source_origin_dir, "reservoir"),
+        },
+        # 0-2
+        # 1-0
+        # 2-1
+        ctx=[1],
+        model_type="Normal",
+        # model_name="ChuFusion",
+        model_name="KuaiLSTM",
+        # model_hyperparam={
+        #     "num_sources": 4,
+        #     "out_channels": 2,
+        #     "transformer_heads": 4,
+        #     "transformer_layers": 2,
+        #     "n_input_features": 23,
+        #     "n_output_features": 2,
+        #     "n_hidden_states": 64,
+        #     "layer_hidden_size": 32,
+        #     "kernel_size_hydrograph": 3,
+        #     "warmup_length": 365,
+        #     "param_limit_func": "sigmoid",
+        #     "param_test_way": "final",
+        #     "source_book": "HF",
+        #     "source_type": "sources",
+        #     "kernel_size": 3,
+        #     "padding": 1,
+        # },
+        model_hyperparam={
+            "n_input_features": 2,
+            "n_output_features": 1,
+            "n_hidden_states": 16,
+        },
+        loss_func="RMSESum",
+        gage_id=["21100150", ],
+        # gage_id_file=os.path.join(source_origin_dir, "reservoir_id(1).csv"),
+        batch_size=32,
+        forecast_history=0,
+        forecast_length=365,
+        # rho=365,
+        var_t=[
+            "precip",
+            "year"
+        ],
+        # var_t_type=["nldas"],
+        var_out=["flow"],
+        var_c=["None"],
+        var_to_source_map={
+            "precip": "reservoir",
+            "year": "reservoir",
+            "flow": "reservoir",
+        },
+
+        train_period=["1959-01-01", "2009-12-31"],
+        # valid_period=["2010-01-01", "2014-12-31"],
+        valid_period=["2010-01-01", "2019-12-31"],
+        # test_period=["2015-01-01", "2019-12-31"],
+        test_period=["2010-01-01", "2019-12-31"],
+
+        dataset="ReservoirDataset",
+        # sampler="KuaiSampler",
+        scaler="DapengScaler",
+        n_output=1,
+        opt="Adam",
+        train_epoch=50,
+        train_mode=0,
+        save_epoch=1,
+        fill_nan=["no"],
+        # model_loader={"load_way": "specified", "test_epoch": 2},
+        model_loader={"load_way": "pth", "pth_path":
+                      os.path.join(os.getcwd(), "results", project_name, "model_Ep32.pth"),
+                      "weights_only": True},
+        # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
+        # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
+        lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
+        which_first_tensor="sequence",
+        # continue_train=0,
+        # weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+    )
+
+@pytest.fixture()
+def reservoir_regulation_lstm_args():
+    # project_name = "test_reservoir/exp001"
+    project_name = os.path.join("test_reservoir_regulation", "exp001")
+    source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
+    source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
+    return cmd(
+        sub=project_name,
+        source_cfgs={
+            "source_names": "reservoir",
+            "source_paths": os.path.join(source_origin_dir, "reservoir"),
+        },
+        # 0-2
+        # 1-0
+        # 2-1
+        ctx=[1],
+        model_type="Normal",
+        # model_name="ChuFusion",
+        model_name="REGULSTM",
+        # model_hyperparam={
+        #     "num_sources": 4,
+        #     "out_channels": 2,
+        #     "transformer_heads": 4,
+        #     "transformer_layers": 2,
+        #     "n_input_features": 23,
+        #     "n_output_features": 2,
+        #     "n_hidden_states": 64,
+        #     "layer_hidden_size": 32,
+        #     "kernel_size_hydrograph": 3,
+        #     "warmup_length": 365,
+        #     "param_limit_func": "sigmoid",
+        #     "param_test_way": "final",
+        #     "source_book": "HF",
+        #     "source_type": "sources",
+        #     "kernel_size": 3,
+        #     "padding": 1,
+        # },
+        model_hyperparam={
+            "regulation_input_features": 1,
+            "regulation_output_features": 1,
+            "regulation_hidden_states": 8,
+            "res_inflow_input_feature": 2,
+            "res_inflow_output_feature": 1,
+            "res_inflow__hidden_states": 8,
+        },
+        loss_func="RMSESum",
+        gage_id=["21100150", ],
+        # gage_id_file=os.path.join(source_origin_dir, "reservoir_id(1).csv"),
+        batch_size=32,
+        forecast_history=0,
+        forecast_length=365,
+        # rho=365,
+        var_t=[
+            "precip",
+            "year",
+        ],
+        # var_t_type=["nldas"],
+        var_out=["flow"],
+        var_c=["None"],
+        var_to_source_map={
+            "precip": "reservoir",
+            "flow": "reservoir",
+            "year": "reservoir",
+        },
+        train_period=["1959-01-01", "2009-12-31"],
+        # valid_period=["2010-01-01", "2014-12-31"],
+        valid_period=["2010-01-01", "2019-12-31"],
+        # test_period=["2015-01-01", "2019-12-31"],
+        test_period=["2010-01-01", "2019-12-31"],
+
+        dataset="ReservoirREGUDataset",
+        # sampler="KuaiSampler",
+        scaler="DapengScaler",
+        n_output=1,
+        opt="Adam",
+        train_epoch=50,
+        train_mode=0,
+        save_epoch=1,
+        fill_nan=["no"],
+        # model_loader={"load_way": "specified", "test_epoch": 2},
+        model_loader={"load_way": "pth", "pth_path":
+                      os.path.join(os.getcwd(), "results", project_name, "model_Ep50.pth"),
+                      "weights_only": True},
+        # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
+        # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
+        lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
+        which_first_tensor="sequence",
+        # continue_train=0,
+        # weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+    )
+
+@pytest.fixture()
+def reservoir_inflow_lstm_args():
+    # project_name = "test_reservoir/exp001"
+    project_name = os.path.join("test_reservoir_inflow", "exp001")
+    source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
+    source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
+    return cmd(
+        sub=project_name,
+        source_cfgs={
+            "source_names": "reservoir",
+            "source_paths": os.path.join(source_origin_dir, "reservoir"),
+        },
+        # 0-2
+        # 1-0
+        # 2-1
+        ctx=[1],
+        model_type="Normal",
+        # model_name="ChuFusion",
+        model_name="INFLOWLSTM",
+        # model_hyperparam={
+        #     "num_sources": 4,
+        #     "out_channels": 2,
+        #     "transformer_heads": 4,
+        #     "transformer_layers": 2,
+        #     "n_input_features": 23,
+        #     "n_output_features": 2,
+        #     "n_hidden_states": 64,
+        #     "layer_hidden_size": 32,
+        #     "kernel_size_hydrograph": 3,
+        #     "warmup_length": 365,
+        #     "param_limit_func": "sigmoid",
+        #     "param_test_way": "final",
+        #     "source_book": "HF",
+        #     "source_type": "sources",
+        #     "kernel_size": 3,
+        #     "padding": 1,
+        # },
+        model_hyperparam={
+            "n_input_features": 2,
+            "n_output_features": 1,
+            "n_hidden_states": 16,
+        },
+        loss_func="RMSESum",
+        gage_id=["21100150", ],
+        # gage_id_file=os.path.join(source_origin_dir, "reservoir_id(1).csv"),
+        batch_size=32,
+        forecast_history=0,
+        forecast_length=365,
+        # rho=365,
+        var_t=[
+            "precip",
+            "year",
+        ],
+        # var_t_type=["nldas"],
+        var_out=["flow"],
+        var_c=["None"],
+        var_to_source_map={
+            "precip": "reservoir",
+            "flow": "reservoir",
+            "year": "reservoir",
+        },
+
+        train_period=["1959-01-01", "2009-12-31"],
+        # valid_period=["2010-01-01", "2014-12-31"],
+        valid_period=["2010-01-01", "2019-12-31"],
+        # test_period=["2015-01-01", "2019-12-31"],
+        test_period=["2010-01-01", "2019-12-31"],
+
+        dataset="ReservoirREGUDataset",
+        # sampler="KuaiSampler",
+        scaler="DapengScaler",
+        n_output=1,
+        opt="Adam",
+        train_epoch=50,
+        train_mode=0,
+        save_epoch=1,
+        fill_nan=["no"],
+        # model_loader={"load_way": "specified", "test_epoch": 2},
+        model_loader={"load_way": "pth", "pth_path":
+                      os.path.join(os.getcwd(), "results", project_name, "model_Ep49.pth"),
+                      "weights_only": True},
+        # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
+        # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
+        lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
+        which_first_tensor="sequence",
+        # continue_train=0,
+        # weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+    )
+
+

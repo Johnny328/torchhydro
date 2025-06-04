@@ -19,6 +19,9 @@ from torchhydro.datasets.data_sets import (
     MopexPrecipitationGagesAttrFusionDataset,
     Seq2SeqDataset,
     TransformerDataset,
+    ReservoirsDataset,
+    ReservoirDataset,
+    ReservoirREGUDataset,
 )
 
 datasets_dict = {
@@ -32,4 +35,7 @@ datasets_dict = {
     "MopexPrecipitationGagesAttrFusionDataset": MopexPrecipitationGagesAttrFusionDataset,
     "Seq2SeqDataset": Seq2SeqDataset,
     "TransformerDataset": TransformerDataset,
+    "ReservoirsDataset": ReservoirsDataset,
+    "ReservoirDataset": ReservoirDataset,
+    "ReservoirREGUDataset": ReservoirREGUDataset,
 }

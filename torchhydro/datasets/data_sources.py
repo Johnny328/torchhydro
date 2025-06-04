@@ -732,6 +732,217 @@ class Smap4Camels(SupData4Camels):
             out[ind2, k] = data_temp[ind].values[ind1]
         return out
 
+class Reservoirs(HydroDataset):
+    def __init__(
+        self,
+        data_path=os.path.join("reservoirs"),
+        download=False
+    ):
+        """
+        Initialization for CAMELS series dataset
+
+        Parameters
+        ----------
+        data_path
+            where we put the dataset.
+            we already set the ROOT directory for hydrodataset,
+            so here just set it as a relative path,
+            by default "reservoirs"
+            download
+                if true, download, by default False
+        """
+        super().__init__(data_path)
+        self.data_source_description = self.set_data_source_describe()
+        if download:
+            self.download_data_source()
+        self.reservoir_sites = self.read_site_info()
+
+    def get_name(self):
+        return "Reservoirs"
+
+    def set_data_source_describe(self):
+        """
+        the files in the dataset and their location in file system
+
+        Returns
+        -------
+        collections.OrderedDict
+            the description for a Reservoirs dataset
+        """
+        reservoirs_dir = self.data_source_dir
+        if not os.path.isdir(reservoirs_dir):
+            raise NotADirectoryError(
+                "Please check if you have downloaded the data and put it in the correct dir"
+            )
+        reservoirs_attr_file = os.path.join(reservoirs_dir, "reservoirs_static.nc")
+        reservoirs_time_series_file = os.path.join(reservoirs_dir, "reservoirs_timeseries.nc")
+        return collections.OrderedDict(
+            RESERVOIRS_DIR=reservoirs_dir,
+            RESERVOIRS_ATTR_FILE=reservoirs_attr_file,
+            RESERVOIRS_TIME_SERIES_FILE=reservoirs_time_series_file,
+        )
+
+    def get_constant_cols(self) -> np.array:
+        """all readable attrs in Reservoirs"""
+        reservoir_attr_file = self.data_source_description["RESERVOIRS_ATTR_FILE"]
+        ts = xr.open_dataset(reservoir_attr_file)
+        all_cols = list(ts.data_vars.keys())
+        other_cols = [col for col in all_cols if col != "Reservoir_ID"]
+        return other_cols
+
+    def get_relevant_cols(self):
+        return np.array(["NetInflow", "Storage"])
+
+    def get_target_cols(self):
+        return np.array(["Release"])
+
+    def read_site_info(self):
+        """
+        Read the site information of reservoirs
+
+        Returns
+        -------
+        pd.DataFrame
+            the site information of reservoirs
+        """
+        reservoir_attr_file = self.data_source_description["RESERVOIRS_ATTR_FILE"]
+        ts = xr.open_dataset(reservoir_attr_file)
+        reservoir_ids = ts["Reservoir_ID"].values
+        reservoir_ids.sort()
+        assert all(x < y for x, y in zip(reservoir_ids, reservoir_ids[1:]))
+        return reservoir_ids
+
+    def read_forcing_reservoir(self, reservoir_id, var_lst, t_range_list):
+        reservoir_time_series_file = self.data_source_description["RESERVOIRS_TIME_SERIES_FILE"]
+        ts = xr.open_dataset(reservoir_time_series_file)
+
+        # 确保时间是升序排列
+        assert all(ts["Time"].values[i] < ts["Time"].values[i + 1] for i in range(len(ts["Time"].values) - 1))
+
+        # 获取所有时间和水库索引
+        time_all = ts["Time"].values.astype("datetime64[D]")
+        rid_all = ts["Reservoir_ID"].values
+        assert reservoir_id in rid_all
+
+        # 找到 reservoir_id 对应的索引
+        rid_index = int(np.where(rid_all == reservoir_id)[0][0])
+
+        # 时间匹配：获取匹配时间在数组中的位置
+        _, ind1, ind2 = np.intersect1d(time_all, t_range_list, return_indices=True)
+        assert time_all[0] <= t_range_list[0] and time_all[-1] >= t_range_list[-1]
+
+        # 输出初始化
+        nt = len(t_range_list)
+        nf = len(var_lst)
+        out = np.empty((nt, nf))
+
+        for k, var in enumerate(var_lst):
+            # 取出每个变量在指定水库和时间段下的值
+            values = ts[var].values  # shape: (n_reservoir, n_time)
+            out[:, k] = values[rid_index, ind1]
+
+        return out
+
+    def read_relevant_cols(
+        self, reservoir_id_lst=None, t_range=None, var_lst=None, **kwargs
+    ) -> np.array:
+        assert all(x < y for x, y in zip(reservoir_id_lst, reservoir_id_lst[1:]))
+        assert all(x < y for x, y in zip(t_range, t_range[1:]))
+        print("reading formatted data:")
+        t_lst = hydro_time.t_range_days(t_range)
+        nt = t_lst.shape[0]
+        x = np.empty([len(reservoir_id_lst), nt, len(var_lst)])
+        for k in range(len(reservoir_id_lst)):
+            data = self.read_forcing_reservoir(
+                reservoir_id_lst[k],
+                var_lst,
+                t_lst,
+            )
+            x[k, :, :] = data
+        return x
+
+    def read_object_ids(self, object_params=None) -> np.array:
+        return self.reservoir_sites
+
+    def read_ts_xrdataset(
+        self,
+        reservoir_id_lst: list = None,
+        t_range: list = None,
+        var_lst: list = None,
+        **kwargs,
+    ):
+        if var_lst is None:
+            return None
+        ts = xr.open_dataset(self.data_source_description["RESERVOIRS_TIME_SERIES_FILE"])
+        all_vars = ts.data_vars
+        if any(var not in ts.variables for var in var_lst):
+            raise ValueError(f"var_lst must all be in {all_vars}")
+        return ts[var_lst].sel(Reservoir_ID=reservoir_id_lst, Time=slice(t_range[0], t_range[1]))
+
+    def read_attr_xrdataset(self, reservoir_id_lst=None, var_lst=None, **kwargs):
+        if var_lst is None or len(var_lst) == 0:
+            return None
+        attr = xr.open_dataset(self.data_source_description["RESERVOIRS_ATTR_FILE"])
+        if "all_number" in list(kwargs.keys()) and kwargs["all_number"]:
+            attr_num = map_string_vars(attr)
+            reservoir_id_lst = [int(id) for id in reservoir_id_lst]
+            return attr_num[var_lst].sel(Reservoir_ID=reservoir_id_lst)
+        return attr[var_lst].sel(Reservoir_ID=reservoir_id_lst)
+
+    def read_forcing_ts(
+        self,
+        reservoir_id_lst: list = None,
+        t_range: list = None,
+        var_lst: list = None,
+        **kwargs,
+    ):
+        # NetInflow
+        netinflow_reservoirs_ds = self.read_ts_xrdataset(
+            reservoir_id_lst,
+            t_range,
+            [var_lst[0]],
+        )
+        # Storage
+        storage_reservoirs_ds = self.read_ts_xrdataset(
+            reservoir_id_lst,
+            t_range,
+            [var_lst[1]],
+        )
+        # 拼接下 netinflow_reservoirs_ds storage_reservoirs_ds
+        data_forcing_all_ds = xr.merge(
+            [
+                netinflow_reservoirs_ds,
+                storage_reservoirs_ds,
+            ]
+        )
+        return data_forcing_all_ds
+
+    def read_release_ts(
+        self,
+        reservoir_id_lst: list = None,
+        t_range: list = None,
+        var_lst: list = None,
+        **kwargs,
+    ):
+        data_output_ds = self.read_ts_xrdataset(
+            reservoir_id_lst,
+            t_range,
+            var_lst,
+        )
+        return data_output_ds
+
+    def read_attr(
+        self,
+        reservoir_id_lst: list = None,
+        var_lst=None,
+        **kwargs
+    ):
+        data_attr_ds = self.read_attr_xrdataset(
+            reservoir_id_lst,
+            var_lst,
+            all_number=True,
+        )
+        return data_attr_ds
 
 class Gages(HydroDataset):
     def __init__(
@@ -2485,6 +2696,223 @@ class MopexPrepGagesAttrFusion(HydroDataset):
     def read_mean_prcp(self, gage_id_lst) -> np.array:
         return self.gages.read_mean_prcp(gage_id_lst)
 
+class Reservoir(HydroDataset):
+    def __init__(
+        self,
+        data_path=os.path.join("reservoir"),
+        download=False
+    ):
+        """
+        Initialization for CAMELS series dataset
+
+        Parameters
+        ----------
+        data_path
+            where we put the dataset.
+            we already set the ROOT directory for hydrodataset,
+            so here just set it as a relative path,
+            by default "Reservoir"
+            download
+                if true, download, by default False
+        """
+        super().__init__(data_path)
+        self.data_source_description = self.set_data_source_describe()
+        if download:
+            self.download_data_source()
+        self.reservoir_sites = self.read_site_info()
+
+    def get_name(self):
+        return "Reservoir"
+
+    def set_data_source_describe(self):
+        """
+        the files in the dataset and their location in file system
+
+        Returns
+        -------
+        collections.OrderedDict
+            the description for a Reservoir dataset
+        """
+        reservoir_dir = self.data_source_dir
+        if not os.path.isdir(reservoir_dir):
+            raise NotADirectoryError(
+                "Please check if you have downloaded the data and put it in the correct dir"
+            )
+        # reservoirs_attr_file = os.path.join(reservoirs_dir, "reservoirs_static.nc")
+        reservoir_time_series_file = os.path.join(reservoir_dir, "rainflow_21100150.nc")
+        return collections.OrderedDict(
+            RESERVOIR_DIR=reservoir_dir,
+            # RESERVOIRS_ATTR_FILE=reservoirs_attr_file,
+            RESERVOIR_TIME_SERIES_FILE=reservoir_time_series_file,
+        )
+
+    # def get_constant_cols(self) -> np.array:
+    #     """all readable attrs in DHFReservoir"""
+    #     reservoir_attr_file = self.data_source_description["RESERVOIRS_ATTR_FILE"]
+    #     ts = xr.open_dataset(reservoir_attr_file)
+    #     all_cols = list(ts.data_vars.keys())
+    #     other_cols = [col for col in all_cols if col != "Reservoir_ID"]
+    #     return other_cols
+
+    def get_relevant_cols(self):
+        return np.array(["precip", "year"])
+
+    def get_target_cols(self):
+        return np.array(["flow"])
+
+    def read_site_info(self):
+        """
+        Read the site information of Reservoir
+
+        Returns
+        -------
+        pd.DataFrame
+            the site information of Reservoir
+        """
+        # reservoir_attr_file = self.data_source_description["RESERVOIRS_ATTR_FILE"]
+        # ts = xr.open_dataset(reservoir_attr_file)
+        reservoir_ids = ["21100150", ]
+        reservoir_ids.sort()
+        assert all(x < y for x, y in zip(reservoir_ids, reservoir_ids[1:]))
+        return reservoir_ids
+
+    def read_forcing_reservoir(self, reservoir_id, var_lst, t_range_list):
+        reservoir_time_series_file = self.data_source_description["RESERVOIR_TIME_SERIES_FILE"]
+        ts = xr.open_dataset(reservoir_time_series_file)
+
+        # 确保时间是升序排列
+        assert all(ts["time"].values[i] < ts["time"].values[i + 1] for i in range(len(ts["time"].values) - 1))
+
+        # 获取所有时间和水库索引
+        time_all = ts["time"].values.astype("datetime64[D]")
+        rid_all = ts["station"].values
+        assert reservoir_id in rid_all
+
+        # 找到 reservoir_id 对应的索引
+        rid_index = int(np.where(rid_all == reservoir_id)[0][0])
+
+        # 时间匹配：获取匹配时间在数组中的位置
+        _, ind1, ind2 = np.intersect1d(time_all, t_range_list, return_indices=True)
+        assert time_all[0] <= t_range_list[0] and time_all[-1] >= t_range_list[-1]
+
+        # 输出初始化
+        nt = len(t_range_list)
+        nf = len(var_lst)
+        out = np.empty((nt, nf))
+
+        for k, var in enumerate(var_lst):
+            # 取出每个变量在指定水库和时间段下的值
+            values = ts[var].values  # shape: (n_reservoir, n_time)
+            out[:, k] = values[rid_index, ind1]
+
+        return out
+
+    def read_relevant_cols(
+        self, reservoir_id_lst=None, t_range=None, var_lst=None, **kwargs
+    ) -> np.array:
+        assert all(x < y for x, y in zip(reservoir_id_lst, reservoir_id_lst[1:]))
+        assert all(x < y for x, y in zip(t_range, t_range[1:]))
+        print("reading formatted data:")
+        t_lst = hydro_time.t_range_days(t_range)
+        nt = t_lst.shape[0]
+        x = np.empty([len(reservoir_id_lst), nt, len(var_lst)])
+        for k in range(len(reservoir_id_lst)):
+            data = self.read_forcing_reservoir(
+                reservoir_id_lst[k],
+                var_lst,
+                t_lst,
+            )
+            x[k, :, :] = data
+        return x
+
+    def read_object_ids(self, object_params=None) -> np.array:
+        return self.reservoir_sites
+
+    def read_ts_xrdataset(
+        self,
+        reservoir_id_lst: list = None,
+        t_range: list = None,
+        var_lst: list = None,
+        **kwargs,
+    ):
+        if var_lst is None:
+            return None
+        ts = xr.open_dataset(self.data_source_description["RESERVOIR_TIME_SERIES_FILE"])
+        all_vars = ts.data_vars
+        if any(var not in ts.variables for var in var_lst):
+            raise ValueError(f"var_lst must all be in {all_vars}")
+        return ts[var_lst].sel(station=reservoir_id_lst, time=slice(t_range[0], t_range[1]))
+
+    # def read_attr_xrdataset(self, reservoir_id_lst=None, var_lst=None, **kwargs):
+    #     if var_lst is None or len(var_lst) == 0:
+    #         return None
+    #     attr = xr.open_dataset(self.data_source_description["RESERVOIRS_ATTR_FILE"])
+    #     if "all_number" in list(kwargs.keys()) and kwargs["all_number"]:
+    #         attr_num = map_string_vars(attr)
+    #         reservoir_id_lst = [int(id) for id in reservoir_id_lst]
+    #         return attr_num[var_lst].sel(Reservoir_ID=reservoir_id_lst)
+    #     return attr[var_lst].sel(Reservoir_ID=reservoir_id_lst)
+
+    def read_forcing_ts(
+        self,
+        reservoir_id_lst: list = None,
+        t_range: list = None,
+        var_lst: list = None,
+        **kwargs,
+    ):
+        # Precip
+        precip_reservoir_ds = self.read_ts_xrdataset(
+            reservoir_id_lst,
+            t_range,
+            [var_lst[0]],
+        )
+        # Year
+        year_reservoir_ds = self.read_ts_xrdataset(
+            reservoir_id_lst,
+            t_range,
+            [var_lst[1]],
+        )
+        # 拼接下 precip_reservoir_ds year_reservoir_ds
+        data_forcing_all_ds = xr.merge(
+            [
+                precip_reservoir_ds,
+                year_reservoir_ds,
+            ]
+        )
+        return data_forcing_all_ds
+
+    def read_mean_prcp(self, gage_id_lst) -> np.array:
+        mean_year_prep = 812
+        mean_day_prep = mean_year_prep / 365
+        return mean_day_prep
+
+    def read_flow_ts(
+        self,
+        reservoir_id_lst: list = None,
+        t_range: list = None,
+        var_lst: list = None,
+        **kwargs,
+    ):
+        data_output_ds = self.read_ts_xrdataset(
+            reservoir_id_lst,
+            t_range,
+            var_lst,
+        )
+        return data_output_ds
+
+    # def read_attr(
+    #     self,
+    #     reservoir_id_lst: list = None,
+    #     var_lst=None,
+    #     **kwargs
+    # ):
+    #     data_attr_ds = self.read_attr_xrdataset(
+    #         reservoir_id_lst,
+    #         var_lst,
+    #         all_number=True,
+    #     )
+    #     return data_attr_ds
+
 
 data_sources_dict = {
     "camels_us": Camels,
@@ -2497,4 +2925,6 @@ data_sources_dict = {
     "mopexprepgagesattrfusion": MopexPrepGagesAttrFusion,
     "gages": Gages,
     "mopex": Mopex,
+    "reservoirs": Reservoirs,
+    "reservoir": Reservoir,
 }

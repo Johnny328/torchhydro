@@ -22,6 +22,8 @@ import torch
 from torchhydro.trainers.deep_hydro import model_type_dict
 from torchhydro.trainers.resulter import Resulter
 
+import torch
+from torch.utils.tensorboard import SummaryWriter
 
 def set_random_seed(seed):
     """
@@ -43,6 +45,65 @@ def set_random_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+def check_nan_in_model(model, epoch=None):
+    has_nan = False
+    for name, param in model.named_parameters():
+        if torch.isnan(param).any():
+            has_nan = True
+            prefix = f"[Epoch {epoch}]" if epoch is not None else "[NaN Check]"
+            print(f"{prefix} NaN detected in parameter: {name}")
+            print(f"    min: {param.min().item():.4e}, max: {param.max().item():.4e}, mean: {param.mean().item():.4e}")
+    if not has_nan:
+        prefix = f"[Epoch {epoch}]" if epoch is not None else "[NaN Check]"
+        print(f"{prefix} All parameters are valid (no NaN)")
+    return has_nan
+
+def evaluate_model(cfgs: Dict):
+    """
+    Function to evaluate a Model
+
+    Parameters
+    ----------
+    cfgs
+        Dictionary containing all configs needed to run the model
+
+    Returns
+    -------
+    None
+    """
+    random_seed = cfgs["training_cfgs"]["random_seed"]
+    set_random_seed(random_seed)
+    resulter = Resulter(cfgs)
+
+    project_name = os.path.join("test_" + "reservoirs", "exp001")
+    model_dir = os.path.join(os.getcwd(), "results", project_name)
+    log_dir = os.path.join(model_dir, "runs/hist_from_saved_models")
+
+    writer = SummaryWriter(log_dir=log_dir)
+
+    model_files = sorted([f for f in os.listdir(model_dir) if f.startswith("model_Ep") and f.endswith(".pth")])
+
+    for model_file_name in model_files:
+        epoch = int(model_file_name.split("Ep")[1].split(".")[0])
+
+        deephydro = _get_deep_hydro(cfgs)
+        model_path = os.path.join(model_dir, model_file_name)
+        state_dict = torch.load(model_path, map_location='cpu')  # 加载权重字典
+        deephydro.model.load_state_dict(state_dict)
+        deephydro.model.eval()
+
+        # 检查是否含有 NaN
+        has_nan = check_nan_in_model(deephydro.model, epoch)
+
+        # 跳过 histogram 写入（避免报错）
+        if has_nan:
+            print(f"[Skip Histogram] Epoch {epoch} skipped due to NaN in model.")
+            return
+
+        for name, param in deephydro.model.named_parameters():
+            writer.add_histogram(name, param.data.cpu().numpy(), epoch)
+
+    writer.close()
 
 def train_and_evaluate(cfgs: Dict):
     """

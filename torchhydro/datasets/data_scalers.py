@@ -289,17 +289,28 @@ class DapengScaler(object):
 
     @property
     def mean_prcp(self):
-        return (
-            self.data_source.read_MP(
+        # return (
+        #     self.data_source.read_MP(
+        #         self.t_s_dict["sites_id"],
+        #         self.data_cfgs["source_cfgs"]["source_path"]["attributes"],
+        #     ).values.reshape(-1, 1)
+        #     if isinstance(self.data_source, HydroBasins)
+        #     else self.data_source.read_mean_prcp(self.t_s_dict["sites_id"])
+        #     .to_array()
+        #     .to_numpy()
+        #     .T  # TODO: check why T is needed
+        # )
+        if isinstance(self.data_source, HydroBasins):
+            return self.data_source.read_MP(
                 self.t_s_dict["sites_id"],
                 self.data_cfgs["source_cfgs"]["source_path"]["attributes"],
             ).values.reshape(-1, 1)
-            if isinstance(self.data_source, HydroBasins)
-            else self.data_source.read_mean_prcp(self.t_s_dict["sites_id"])
-            .to_array()
-            .to_numpy()
-            .T  # TODO: check why T is needed
-        )
+        else:
+            data = self.data_source.read_mean_prcp(self.t_s_dict["sites_id"])
+            if isinstance(data, (float, int)):
+                return np.array([[data]])
+            else:
+                return np.array(data).reshape(-1, 1)
 
     def inverse_transform(self, target_values):
         """

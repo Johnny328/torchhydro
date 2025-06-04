@@ -8,6 +8,8 @@ FilePath: \torchhydro\torchhydro\models\model_dict_function.py
 Copyright (c) 2021-2022 Wenyu Ouyang. All rights reserved.
 """
 from torchhydro.models.coupledlstm import CoupledLSTMModel
+from torchhydro.models.regulstm import REGULstmModel
+from torchhydro.models.inflowlstm import InflowLstmModel
 from torchhydro.models.cudnnlstm import (
     CudnnLstmModel,
     LinearCudnnLstmModel,
@@ -63,6 +65,8 @@ pytorch_model_dict = {
     "DataEnhanced": DataEnhancedModel,
     "DataFusion": DataFusionModel,
     "Transformer": Transformer,
+    "REGULSTM": REGULstmModel,
+    "INFLOWLSTM": InflowLstmModel,
 }
 
 pytorch_criterion_dict = {
