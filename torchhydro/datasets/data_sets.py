@@ -37,11 +37,13 @@ LOGGER = logging.getLogger(__name__)
 DIMENSION_MAP = {
     "basin": "station",
     # "time": "time",
-    "variable": "variable"
+    "variable": "variable",
 }
+
 
 def dim(name):
     return DIMENSION_MAP.get(name, name)  # 如果找不到映射，默认用原名
+
 
 def _fill_gaps_da(da: xr.DataArray, fill_nan: Optional[str] = None) -> xr.DataArray:
     """Fill gaps in a DataArray"""
@@ -770,9 +772,9 @@ class BaseDataset(Dataset):
     def _trans2da_and_setunits(self, ds):
         """Set units for dataarray transfromed from dataset"""
         for var_name in ds.data_vars:
-            if ds[var_name].dtype == 'timedelta64[ns]':
+            if ds[var_name].dtype == "timedelta64[ns]":
                 # 将时间单位从纳秒转换为天，并转换为float类型
-                ds[var_name] = ds[var_name].astype('timedelta64[D]').astype(float)
+                ds[var_name] = ds[var_name].astype("timedelta64[D]").astype(float)
 
         result = ds.to_array(dim="variable")
         units_dict = {
@@ -1191,9 +1193,9 @@ class DplDataset(BaseDataset):
         x_train = self.x_origin[basin, time - warmup : time + rho + horizon, :]
         y_train = self.y_origin[basin, time : time + rho + horizon, :]
         return (
-                   torch.from_numpy(x_train).float(),
-                   z_train,
-               ), torch.from_numpy(y_train).float()
+            torch.from_numpy(x_train).float(),
+            z_train,
+        ), torch.from_numpy(y_train).float()
 
 
 class FlexibleDataset(BaseDataset):
@@ -1380,15 +1382,15 @@ class TransformerDataset(Seq2SeqDataset):
         rho = self.rho
         horizon = self.horizon
 
-        p = self.x[basin, idx + 1: idx + rho + horizon + 1, 0]
-        s = self.x[basin, idx: idx + rho, 1]
+        p = self.x[basin, idx + 1 : idx + rho + horizon + 1, 0]
+        s = self.x[basin, idx : idx + rho, 1]
         x = np.stack((p[:rho], s), axis=1)
         c = self.c[basin, :]
         c = np.tile(c, (rho + horizon, 1))
         x = np.concatenate((x, c[:rho]), axis=1)
 
         x_h = np.concatenate((p[rho:].reshape(-1, 1), c[rho:]), axis=1)
-        y = self.y[basin, idx + rho + 1: idx + rho + horizon + 1, :]
+        y = self.y[basin, idx + rho + 1 : idx + rho + horizon + 1, :]
 
         return [
             torch.from_numpy(x).float(),
@@ -1575,7 +1577,9 @@ class ReservoirsDataset(BaseDataset):
 
     @property
     def data_source(self):
-        return data_sources_dict["reservoirs"](self.data_cfgs["source_cfgs"]["source_paths"])
+        return data_sources_dict["reservoirs"](
+            self.data_cfgs["source_cfgs"]["source_paths"]
+        )
 
     def _read_xyc(self):
         """Read x, y, c data from data source
@@ -1610,9 +1614,14 @@ class ReservoirsDataset(BaseDataset):
             all_number=True,
         )
 
-        self.x_origin, self.y_origin, self.c_origin = self._to_dataarray_with_unit(
+        x_origin, y_origin, c_origin = self._to_dataarray_with_unit(
             data_forcing_ds, data_output_ds, data_attr_ds
         )
+        return {
+            "relevant_cols": x_origin.transpose("basin", "time", "variable"),
+            "target_cols": y_origin.transpose("basin", "time", "variable"),
+            "constant_cols": c_origin.transpose("basin", "variable"),
+        }
 
     def __getitem__(self, item: int):
         if not self.train_mode:
@@ -1627,7 +1636,7 @@ class ReservoirsDataset(BaseDataset):
         basin, idx = self.lookup_table[item]
         # seq_length = self.rho
         warmup_length = self.warmup_length
-        x = self.x[basin, idx - warmup_length: idx + self.rho + self.horizon, :]
+        x = self.x[basin, idx - warmup_length : idx + self.rho + self.horizon, :]
         # x = (
         #     self.x.sel(
         #         basin=basin,
@@ -1650,13 +1659,14 @@ class ReservoirsDataset(BaseDataset):
         #         .to_numpy()
         #         .T
         # )
-        y = self.y[basin, idx: idx + self.rho + self.horizon, :]
+        y = self.y[basin, idx : idx + self.rho + self.horizon, :]
         if self.c is None or self.c.shape[-1] == 0:
             return torch.from_numpy(x).float(), torch.from_numpy(y).float()
         c = self.c[basin, :]
         c = np.repeat(c, x.shape[0], axis=0).reshape(c.shape[0], -1).T
         x = np.concatenate((x, c), axis=1)
         return torch.from_numpy(x).float(), torch.from_numpy(y).float()
+
 
 class ReservoirDataset(BaseDataset):
     def __init__(self, data_cfgs: dict, is_tra_val_te: str):
@@ -1672,7 +1682,9 @@ class ReservoirDataset(BaseDataset):
 
     @property
     def data_source(self):
-        return data_sources_dict["reservoir"](self.data_cfgs["source_cfgs"]["source_paths"])
+        return data_sources_dict["reservoir"](
+            self.data_cfgs["source_cfgs"]["source_paths"]
+        )
 
     def _read_xyc(self):
         """Read x, y, c data from data source
@@ -1707,53 +1719,31 @@ class ReservoirDataset(BaseDataset):
         #     all_number=True,
         # )
 
-        self.x_origin, self.y_origin, self.c_origin = self._to_dataarray_with_unit(
+        x_origin, y_origin, c_origin = self._to_dataarray_with_unit(
             data_forcing_ds, data_output_ds, None
         )
+        return {
+            "relevant_cols": x_origin.transpose("station", "time", "variable").rename(
+                {"station": "basin"}
+            ),
+            "target_cols": y_origin.transpose("station", "time", "variable").rename(
+                {"station": "basin"}
+            ),
+            # "constant_cols": None,
+        }
 
     def __getitem__(self, item: int):
         if not self.train_mode:
             x = self.x[item, :, :]
             y = self.y[item, :, :]
-            if self.c is None or self.c.shape[-1] == 0:
-                return torch.from_numpy(x).float(), torch.from_numpy(y).float()
-            c = self.c[item, :]
-            c = np.repeat(c, x.shape[0], axis=0).reshape(c.shape[0], -1).T
-            xc = np.concatenate((x, c), axis=1)
-            return torch.from_numpy(xc).float(), torch.from_numpy(y).float()
+            return torch.from_numpy(x).float(), torch.from_numpy(y).float()
         basin, idx = self.lookup_table[item]
         # seq_length = self.rho
         warmup_length = self.warmup_length
-        x = self.x[basin, idx - warmup_length: idx + self.rho + self.horizon, :]
-        # x = (
-        #     self.x.sel(
-        #         basin=basin,
-        #         time=slice(
-        #             time - np.timedelta64(warmup_length, "D"),
-        #             time + np.timedelta64(seq_length - 1, "D"),
-        #         ),
-        #     ).to_numpy()
-        # ).T
-        # x = np.concatenate((p_gages, p_mopex, x), axis=1)
-        # for y, we don't need warmup as warmup are only used for get initial value for some state variables
-        # y = (
-        #     self.y.sel(
-        #         basin=basin,
-        #         time=slice(
-        #             time,
-        #             time + np.timedelta64(seq_length - 1, "D"),
-        #         ),
-        #     )
-        #         .to_numpy()
-        #         .T
-        # )
-        y = self.y[basin, idx: idx + self.rho + self.horizon, :]
-        if self.c is None or self.c.shape[-1] == 0:
-            return torch.from_numpy(x).float(), torch.from_numpy(y).float()
-        c = self.c[basin, :]
-        c = np.repeat(c, x.shape[0], axis=0).reshape(c.shape[0], -1).T
-        x = np.concatenate((x, c), axis=1)
+        x = self.x[basin, idx - warmup_length : idx + self.rho + self.horizon, :]
+        y = self.y[basin, idx : idx + self.rho + self.horizon, :]
         return torch.from_numpy(x).float(), torch.from_numpy(y).float()
+
 
 class ReservoirREGUDataset(BaseDataset):
     def __init__(self, data_cfgs: dict, is_tra_val_te: str):
@@ -1769,7 +1759,9 @@ class ReservoirREGUDataset(BaseDataset):
 
     @property
     def data_source(self):
-        return data_sources_dict["reservoir"](self.data_cfgs["source_cfgs"]["source_paths"])
+        return data_sources_dict["reservoir"](
+            self.data_cfgs["source_cfgs"]["source_paths"]
+        )
 
     def _read_xyc(self):
         """Read x, y, c data from data source
@@ -1809,11 +1801,13 @@ class ReservoirREGUDataset(BaseDataset):
         precip_10d = precip.rolling(time=10, min_periods=1).sum()
         precip_10d.name = "precip_10d_sum"
 
-        data_forcing_ds = data_forcing_ds.assign({
-            "precip_15d_sum": precip_15d,
-            "precip_20d_sum": precip_20d,
-            "precip_10d_sum": precip_10d,
-        })
+        data_forcing_ds = data_forcing_ds.assign(
+            {
+                "precip_15d_sum": precip_15d,
+                "precip_20d_sum": precip_20d,
+                "precip_10d_sum": precip_10d,
+            }
+        )
 
         # 添加新列名
         new_cols = ["precip_15d_sum", "precip_20d_sum", "precip_10d_sum"]
@@ -1830,55 +1824,41 @@ class ReservoirREGUDataset(BaseDataset):
         #     all_number=True,
         # )
 
-        self.x_origin, self.y_origin, self.c_origin = self._to_dataarray_with_unit(
+        x_origin, y_origin, c_origin = self._to_dataarray_with_unit(
             data_forcing_ds, data_output_ds, None
         )
+        return {
+            "relevant_cols": x_origin.transpose("station", "time", "variable").rename(
+                {"station": "basin"}
+            ),
+            "target_cols": y_origin.transpose("station", "time", "variable").rename(
+                {"station": "basin"}
+            ),
+            # "constant_cols": None,
+        }
 
     def __getitem__(self, item: int):
         if not self.train_mode:
             x = self.x[item, :, :]
             x_origin = self.x_origin[item, :, :]
             y = self.y[item, :, :]
-            if self.c is None or self.c.shape[-1] == 0:
-                return (torch.from_numpy(x).float(), torch.from_numpy(x_origin).float()), torch.from_numpy(y).float()
-            c = self.c[item, :]
-            c = np.repeat(c, x.shape[0], axis=0).reshape(c.shape[0], -1).T
-            xc = np.concatenate((x, c), axis=1)
-            return (torch.from_numpy(xc).float(), torch.from_numpy(x_origin).float()), torch.from_numpy(y).float()
+            return (
+                torch.from_numpy(x).float(),
+                torch.from_numpy(x_origin).float(),
+            ), torch.from_numpy(y).float()
         basin, idx = self.lookup_table[item]
         # seq_length = self.rho
         warmup_length = self.warmup_length
-        x = self.x[basin, idx - warmup_length: idx + self.rho + self.horizon, :]
-        x_origin = self.x_origin[basin, idx - warmup_length: idx + self.rho + self.horizon, :]
-        # x = (
-        #     self.x.sel(
-        #         basin=basin,
-        #         time=slice(
-        #             time - np.timedelta64(warmup_length, "D"),
-        #             time + np.timedelta64(seq_length - 1, "D"),
-        #         ),
-        #     ).to_numpy()
-        # ).T
-        # x = np.concatenate((p_gages, p_mopex, x), axis=1)
-        # for y, we don't need warmup as warmup are only used for get initial value for some state variables
-        # y = (
-        #     self.y.sel(
-        #         basin=basin,
-        #         time=slice(
-        #             time,
-        #             time + np.timedelta64(seq_length - 1, "D"),
-        #         ),
-        #     )
-        #         .to_numpy()
-        #         .T
-        # )
-        y = self.y[basin, idx: idx + self.rho + self.horizon, :]
-        if self.c is None or self.c.shape[-1] == 0:
-            return (torch.from_numpy(x).float(), torch.from_numpy(x_origin).float()), torch.from_numpy(y).float()
-        c = self.c[basin, :]
-        c = np.repeat(c, x.shape[0], axis=0).reshape(c.shape[0], -1).T
-        x = np.concatenate((x, c), axis=1)
-        return (torch.from_numpy(x).float(), torch.from_numpy(x_origin).float()), torch.from_numpy(y).float()
+        x = self.x[basin, idx - warmup_length : idx + self.rho + self.horizon, :]
+        x_origin = self.x_origin[
+            basin, idx - warmup_length : idx + self.rho + self.horizon, :
+        ]
+
+        y = self.y[basin, idx : idx + self.rho + self.horizon, :]
+        return (
+            torch.from_numpy(x).float(),
+            torch.from_numpy(x_origin).float(),
+        ), torch.from_numpy(y).float()
 
 
 class MopexPrecipitationGagesAttrFusionDataset(BaseDataset):
@@ -1891,13 +1871,17 @@ class MopexPrecipitationGagesAttrFusionDataset(BaseDataset):
         is_tra_val_te
             train, vaild or test
         """
-        super(MopexPrecipitationGagesAttrFusionDataset, self).__init__(data_cfgs, is_tra_val_te)
+        super(MopexPrecipitationGagesAttrFusionDataset, self).__init__(
+            data_cfgs, is_tra_val_te
+        )
 
     @property
     def data_source(self):
         gages_data_path = self.data_cfgs["source_cfgs"]["source_paths"][0]
         mopex_data_path = self.data_cfgs["source_cfgs"]["source_paths"][1]
-        return data_sources_dict["mopexprepgagesattrfusion"](gages_data_path, mopex_data_path)
+        return data_sources_dict["mopexprepgagesattrfusion"](
+            gages_data_path, mopex_data_path
+        )
 
     def _read_xyc(self):
         """Read x, y, c data from data source
@@ -1933,9 +1917,14 @@ class MopexPrecipitationGagesAttrFusionDataset(BaseDataset):
             all_number=True,
         )
 
-        self.x_origin, self.y_origin, self.c_origin = self._to_dataarray_with_unit(
+        x_origin, y_origin, c_origin = self._to_dataarray_with_unit(
             data_forcing_ds, data_output_ds, data_attr_ds
         )
+        return {
+            "relevant_cols": x_origin.transpose("basin", "time", "variable"),
+            "target_cols": y_origin.transpose("basin", "time", "variable"),
+            "constant_cols": c_origin.transpose("basin", "variable"),
+        }
 
     def __getitem__(self, item: int):
         if not self.train_mode:
@@ -1955,7 +1944,7 @@ class MopexPrecipitationGagesAttrFusionDataset(BaseDataset):
         basin, idx = self.lookup_table[item]
         # seq_length = self.rho
         warmup_length = self.warmup_length
-        x = self.x[basin, idx - warmup_length: idx + self.rho + self.horizon, :]
+        x = self.x[basin, idx - warmup_length : idx + self.rho + self.horizon, :]
         # x = (
         #     self.x.sel(
         #         basin=basin,
@@ -1978,11 +1967,10 @@ class MopexPrecipitationGagesAttrFusionDataset(BaseDataset):
         #         .to_numpy()
         #         .T
         # )
-        y = self.y[basin, idx: idx + self.rho + self.horizon, :]
+        y = self.y[basin, idx : idx + self.rho + self.horizon, :]
         if self.c is None or self.c.shape[-1] == 0:
             return torch.from_numpy(x).float(), torch.from_numpy(y).float()
         c = self.c[basin, :]
         c = np.repeat(c, x.shape[0], axis=0).reshape(c.shape[0], -1).T
         x = np.concatenate((x, c), axis=1)
         return torch.from_numpy(x).float(), torch.from_numpy(y).float()
-

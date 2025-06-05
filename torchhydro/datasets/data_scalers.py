@@ -430,6 +430,9 @@ class DapengScaler(object):
         """
         stat_dict = {}
         for k, v in vars_data.items():
+            # 如果v是None，就跳过
+            if v is None:
+                continue
             for i in range(len(v.coords["variable"].values)):
                 var_name = v.coords["variable"].values[i]
                 if var_name in self.prcp_norm_cols:
