@@ -1,7 +1,7 @@
 """
 Author: Wenyu Ouyang
 Date: 2024-04-08 18:16:53
-LastEditTime: 2025-05-15 19:35:47
+LastEditTime: 2025-06-04 17:26:30
 LastEditors: Wenyu Ouyang
 Description: A pytorch dataset class; references to https://github.com/neuralhydrology/neuralhydrology
 FilePath: \torchhydro\torchhydro\datasets\data_sets.py
@@ -331,9 +331,12 @@ class BaseDataset(Dataset):
             c = np.repeat(c, x.shape[0], axis=0).reshape(c.shape[0], -1).T
             xc = np.concatenate((x, c), axis=1)
             return torch.from_numpy(xc).float(), torch.from_numpy(y).float()
-        
+
         if self.training_cfgs["multi_length_training"]["is_multi_length_training"]:
-            if self.training_cfgs["multi_length_training"]["multi_len_train_type"] == "Pad":
+            if (
+                self.training_cfgs["multi_length_training"]["multi_len_train_type"]
+                == "Pad"
+            ):
                 basin, idx, window = self.lookup_table[item]
                 warmup_length = self.warmup_length
                 x = self.x[basin, idx - warmup_length : idx + window + self.horizon, :]
@@ -344,10 +347,22 @@ class BaseDataset(Dataset):
                 c = np.repeat(c, x.shape[0], axis=0).reshape(c.shape[0], -1).T
                 xc = np.concatenate((x, c), axis=1)
                 return torch.from_numpy(xc).float(), torch.from_numpy(y).float()
-            elif self.training_cfgs["multi_length_training"]["multi_len_train_type"] == "multi_table":
+            elif (
+                self.training_cfgs["multi_length_training"]["multi_len_train_type"]
+                == "multi_table"
+            ):
                 window_len, idx_in_specific_table = self.lookup_table[item]
-                basin, time_step = self.lookup_tables_by_length[window_len][idx_in_specific_table]
-                x = self.x[basin, time_step - self.warmup_length : time_step + window_len + self.horizon, :]
+                basin, time_step = self.lookup_tables_by_length[window_len][
+                    idx_in_specific_table
+                ]
+                x = self.x[
+                    basin,
+                    time_step
+                    - self.warmup_length : time_step
+                    + window_len
+                    + self.horizon,
+                    :,
+                ]
                 y = self.y[basin, time_step : time_step + window_len + self.horizon, :]
                 if self.c is None or self.c.shape[-1] == 0:
                     return torch.from_numpy(x).float(), torch.from_numpy(y).float()
@@ -367,14 +382,16 @@ class BaseDataset(Dataset):
             xc = np.concatenate((x, c), axis=1)
             return torch.from_numpy(xc).float(), torch.from_numpy(y).float()
 
-
     def _load_data(self):
         origin_data = self._read_xyc()
         # normalization
         norm_data = self._normalize(origin_data)
         origin_data_wonan, norm_data_wonan = self._kill_nan(origin_data, norm_data)
         self._trans2nparr(origin_data_wonan, norm_data_wonan)
-        if self.training_cfgs["multi_length_training"]["multi_len_train_type"] == "multi_table":
+        if (
+            self.training_cfgs["multi_length_training"]["multi_len_train_type"]
+            == "multi_table"
+        ):
             self._create_multi_len_lookup_table()
         else:
             self._create_lookup_table()
@@ -443,15 +460,15 @@ class BaseDataset(Dataset):
         """
         return self.target_scaler.data_target.coords["time"][self.warmup_length :]
 
-    def denormalize(self, norm_data, is_real_time=True):
+    def denormalize(self, norm_data, pace_idx=None):
         """Denormalize the norm_data
 
         Parameters
         ----------
         norm_data : np.ndarray
             batch-first data
-        is_real_time : bool, optional
-            whether the data is real time data, by default True
+        pace_idx : int, optional
+            which pace to show, by default None
             sometimes we may have multiple results for one time period and we flatten them
             so we need a temp time to replace real one
 
@@ -468,11 +485,149 @@ class BaseDataset(Dataset):
             units = {**units, **target_data.attrs["units"]}
         selected_time_points = self._selected_time_points_for_denorm()
         selected_data = target_data.sel(time=selected_time_points)
+
+        # 处理四维数据
+        if norm_data.ndim == 4:
+            # 检查是否是按预测步长组织的数据
+            if norm_data.shape[0] < norm_data.shape[1]:  # bybasins模式
+                # 形状为 (basin_num, i_e_time_length, forecast_length, nf)
+                basin_num, i_e_time_length, forecast_length, nf = norm_data.shape
+
+                # 如果指定了pace_idx，则选择特定的预测步长
+                if (
+                    pace_idx is not None
+                    and pace_idx != np.nan
+                    and pace_idx >= 0
+                    and pace_idx < forecast_length
+                ):
+                    norm_data_3d = norm_data[:, :, pace_idx, :]
+                    # 创建新的坐标
+                    # 修改这里：确保basin坐标长度与数据维度匹配
+                    if basin_num == 1 and len(selected_data.coords["basin"]) > 1:
+                        # 当只有一个流域时，选择第一个流域的坐标
+                        basin_coord = selected_data.coords["basin"].values[0:1]
+                    else:
+                        basin_coord = selected_data.coords["basin"].values[:basin_num]
+
+                    coords = {
+                        "basin": basin_coord,
+                        "time": selected_data.coords["time"][:i_e_time_length],
+                        "variable": selected_data.coords["variable"],
+                    }
+                    dims = ["basin", "time", "variable"]
+                else:
+                    # 如果没有指定pace_idx，则创建一个新的维度'horizon'
+                    norm_data_3d = norm_data.reshape(
+                        basin_num, i_e_time_length * forecast_length, nf
+                    )
+                    # 创建新的时间坐标，重复i_e_time_length次
+                    new_times = []
+                    for i in range(forecast_length):
+                        if i < len(selected_data.coords["time"]):
+                            new_times.extend(
+                                selected_data.coords["time"][:i_e_time_length]
+                            )
+
+                    # 确保时间坐标长度与数据匹配
+                    if len(new_times) > i_e_time_length * forecast_length:
+                        new_times = new_times[: i_e_time_length * forecast_length]
+                    elif len(new_times) < i_e_time_length * forecast_length:
+                        # 如果时间坐标不足，使用最后一个时间点填充
+                        last_time = (
+                            new_times[-1]
+                            if new_times
+                            else selected_data.coords["time"][0]
+                        )
+                        while len(new_times) < i_e_time_length * forecast_length:
+                            new_times.append(last_time)
+
+                    # 修改这里：确保basin坐标长度与数据维度匹配
+                    if basin_num == 1 and len(selected_data.coords["basin"]) > 1:
+                        basin_coord = selected_data.coords["basin"].values[0:1]
+                    else:
+                        basin_coord = selected_data.coords["basin"].values[:basin_num]
+
+                    coords = {
+                        "basin": basin_coord,
+                        "time": new_times,
+                        "variable": selected_data.coords["variable"],
+                    }
+                    dims = ["basin", "time", "variable"]
+            else:  # byforecast模式
+                # 形状为 (forecast_length, basin_num, i_e_time_length, nf)
+                forecast_length, basin_num, i_e_time_length, nf = norm_data.shape
+
+                # 如果指定了pace_idx，则选择特定的预测步长
+                if (
+                    pace_idx is not None
+                    and pace_idx != np.nan
+                    and pace_idx >= 0
+                    and pace_idx < forecast_length
+                ):
+                    norm_data_3d = norm_data[pace_idx]
+                    # 修改这里：确保basin坐标长度与数据维度匹配
+                    if basin_num == 1 and len(selected_data.coords["basin"]) > 1:
+                        basin_coord = selected_data.coords["basin"].values[0:1]
+                    else:
+                        basin_coord = selected_data.coords["basin"].values[:basin_num]
+
+                    coords = {
+                        "basin": basin_coord,
+                        "time": selected_data.coords["time"][:i_e_time_length],
+                        "variable": selected_data.coords["variable"],
+                    }
+                    dims = ["basin", "time", "variable"]
+                else:
+                    # 如果没有指定pace_idx，则创建一个新的维度'horizon'
+                    # 重塑为 (forecast_length, basin_num, i_e_time_length, nf) -> (basin_num, forecast_length * i_e_time_length, nf)
+                    norm_data_3d = np.transpose(norm_data, (1, 0, 2, 3)).reshape(
+                        basin_num, forecast_length * i_e_time_length, nf
+                    )
+
+                    # 创建新的时间坐标
+                    new_times = []
+                    for i in range(forecast_length):
+                        if i < len(selected_data.coords["time"]):
+                            new_times.extend(
+                                selected_data.coords["time"][:i_e_time_length]
+                            )
+
+                    # 确保时间坐标长度与数据匹配
+                    if len(new_times) > forecast_length * i_e_time_length:
+                        new_times = new_times[: forecast_length * i_e_time_length]
+                    elif len(new_times) < forecast_length * i_e_time_length:
+                        # 如果时间坐标不足，使用最后一个时间点填充
+                        last_time = (
+                            new_times[-1]
+                            if new_times
+                            else selected_data.coords["time"][0]
+                        )
+                        while len(new_times) < forecast_length * i_e_time_length:
+                            new_times.append(last_time)
+
+                    # 修改这里：确保basin坐标长度与数据维度匹配
+                    if basin_num == 1 and len(selected_data.coords["basin"]) > 1:
+                        basin_coord = selected_data.coords["basin"].values[0:1]
+                    else:
+                        basin_coord = selected_data.coords["basin"].values[:basin_num]
+
+                    coords = {
+                        "basin": basin_coord,
+                        "time": new_times,
+                        "variable": selected_data.coords["variable"],
+                    }
+                    dims = ["basin", "time", "variable"]
+        else:
+            coords = selected_data.coords
+            dims = selected_data.dims
+            norm_data_3d = norm_data
+
+        # create DataArray and inverse transform
         denorm_xr_ds = target_scaler.inverse_transform(
             xr.DataArray(
-                norm_data,
-                dims=selected_data.dims,
-                coords=selected_data.coords,
+                norm_data_3d,
+                dims=dims,
+                coords=coords,
                 attrs={"units": units},
             )
         )
@@ -711,8 +866,12 @@ class BaseDataset(Dataset):
         warmup_length = self.warmup_length
         horizon = self.horizon
         max_time_length = self.nt
-        is_multi_len_train = self.training_cfgs["multi_length_training"]["is_multi_length_training"]
-        multi_window_lengths = self.training_cfgs["multi_length_training"]["multi_window_lengths"]
+        is_multi_len_train = self.training_cfgs["multi_length_training"][
+            "is_multi_length_training"
+        ]
+        multi_window_lengths = self.training_cfgs["multi_length_training"][
+            "multi_window_lengths"
+        ]
         for basin in tqdm(range(basin_coordinates), file=sys.stdout, disable=False):
             if not self.train_mode:
                 # we don't need to ignore those with full nan in target vars for prediction without loss calculation
@@ -727,8 +886,10 @@ class BaseDataset(Dataset):
                 nan_array = np.isnan(self.y[basin, :, :])
                 if is_multi_len_train:
                     for window in multi_window_lengths:
-                        for f in range(warmup_length, max_time_length - window - horizon + 1):
-                        # 检查目标区间内是否全为nan
+                        for f in range(
+                            warmup_length, max_time_length - window - horizon + 1
+                        ):
+                            # 检查目标区间内是否全为nan
                             if not np.all(nan_array[f + window : f + window + horizon]):
                                 # 记录 (basin, 起始位置, 窗口长度)
                                 lookup.append((basin, f, window))
@@ -736,7 +897,9 @@ class BaseDataset(Dataset):
 
                     lookup.extend(
                         (basin, f)
-                        for f in range(warmup_length, max_time_length - rho - horizon + 1)
+                        for f in range(
+                            warmup_length, max_time_length - rho - horizon + 1
+                        )
                         if not np.all(nan_array[f + rho : f + rho + horizon])
                     )
         self.lookup_table = dict(enumerate(lookup))
@@ -750,12 +913,16 @@ class BaseDataset(Dataset):
         warmup_length = self.warmup_length
         horizon = self.horizon
         max_time_length = self.nt
-        is_multi_len_train = self.training_cfgs["multi_length_training"]["is_multi_length_training"]
-        multi_window_lengths = self.training_cfgs["multi_length_training"]["multi_window_lengths"]
+        is_multi_len_train = self.training_cfgs["multi_length_training"][
+            "is_multi_length_training"
+        ]
+        multi_window_lengths = self.training_cfgs["multi_length_training"][
+            "multi_window_lengths"
+        ]
 
         # 初始化不同长度的lookup表
         self.lookup_tables_by_length = {length: [] for length in multi_window_lengths}
-        
+
         # New: Global lookup table to map a single index to (window_length, index_within_that_window_length_table)
         self.global_lookup_table_indices = []
 
@@ -776,20 +943,29 @@ class BaseDataset(Dataset):
                 nan_array = np.isnan(self.y[basin, :, :])
                 if is_multi_len_train:
                     for window in multi_window_lengths:
-                        for f in range(warmup_length, max_time_length - window - horizon + 1):
-                        # 检查目标区间内是否全为nan
+                        for f in range(
+                            warmup_length, max_time_length - window - horizon + 1
+                        ):
+                            # 检查目标区间内是否全为nan
                             if not np.all(nan_array[f + window : f + window + horizon]):
                                 # 记录 (basin, 起始位置) 到对应窗口长度的 lookup table
                                 self.lookup_tables_by_length[window].append((basin, f))
                                 # 记录 (窗口长度, 在该窗口长度 lookup table 中的索引) 到全局索引表
-                                self.global_lookup_table_indices.append((window, len(self.lookup_tables_by_length[window]) - 1))
+                                self.global_lookup_table_indices.append(
+                                    (
+                                        window,
+                                        len(self.lookup_tables_by_length[window]) - 1,
+                                    )
+                                )
                 else:
                     lookup.extend(
                         (basin, f)
-                        for f in range(warmup_length, max_time_length - rho - horizon + 1)
+                        for f in range(
+                            warmup_length, max_time_length - rho - horizon + 1
+                        )
                         if not np.all(nan_array[f + rho : f + rho + horizon])
                     )
-        
+
         if is_multi_len_train and self.train_mode:
             # If multi-length training is enabled and in train mode, use the global lookup table
             self.lookup_table = dict(enumerate(self.global_lookup_table_indices))
@@ -882,6 +1058,10 @@ class ObsForeDataset(BaseDataset):
             "basin", "time", "lead_step", "variable"
         )
         return data_dict
+
+    def _denorm():
+        # TODO: 满足不同需求的计算指标
+        pass
 
     def __getitem__(self, item: int):
         """获取数据集中的一个样本

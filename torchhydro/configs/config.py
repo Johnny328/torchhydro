@@ -1,10 +1,10 @@
 """
 Author: Wenyu Ouyang
 Date: 2021-12-31 11:08:29
-LastEditTime: 2025-05-14 19:32:13
+LastEditTime: 2025-05-31 09:18:31
 LastEditors: Wenyu Ouyang
 Description: Config for hydroDL
-FilePath: \torchhydro\torchhydro\configs\config.py
+FilePath: /torchhydro/torchhydro/configs/config.py
 Copyright (c) 2021-2022 Wenyu Ouyang. All rights reserved.
 """
 

@@ -1,7 +1,7 @@
 """
 Author: Wenyu Ouyang
 Date: 2021-12-05 11:21:58
-LastEditTime: 2025-01-14 19:29:34
+LastEditTime: 2025-06-04 14:13:27
 LastEditors: Wenyu Ouyang
 Description: Main function for training and testing
 FilePath: \torchhydro\torchhydro\trainers\trainer.py
@@ -128,16 +128,14 @@ def train_and_evaluate(cfgs: Dict):
     continue_train = deephydro.cfgs["model_cfgs"]["continue_train"]
     is_transfer_learning = deephydro.cfgs["model_cfgs"]["model_type"] == "TransLearn"
     is_train = train_mode and (
-        (
-            deephydro.weight_path is not None
-            and (continue_train or is_transfer_learning)
-        )
+        (deephydro.weight_path is not None and (continue_train or is_transfer_learning))
         or (deephydro.weight_path is None)
     )
     if is_train:
         deephydro.model_train()
     preds, obss = deephydro.model_evaluate()
     resulter.save_cfg(deephydro.cfgs)
+    # TODO: If preds and obss are 4-dimensional, this will run but metrics calculation for valid and test are not supported
     resulter.save_result(preds, obss)
     resulter.eval_result(preds, obss)
 

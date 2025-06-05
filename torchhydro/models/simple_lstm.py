@@ -1,10 +1,10 @@
 """
 Author: Wenyu Ouyang
 Date: 2023-09-19 09:36:25
-LastEditTime: 2025-04-16 19:03:46
+LastEditTime: 2025-06-05 09:06:53
 LastEditors: Wenyu Ouyang
 Description: Some self-made LSTMs
-FilePath: /torchhydro/torchhydro/models/simple_lstm.py
+FilePath: \torchhydro\torchhydro\models\simple_lstm.py
 Copyright (c) 2023-2024 Wenyu Ouyang. All rights reserved.
 """
 
@@ -17,6 +17,7 @@ from torch import Tensor as T
 from torch.nn import Parameter as P
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
+
 class SimpleLSTM(nn.Module):
     def __init__(self, input_size, output_size, hidden_size, dr=0.0):
         super(SimpleLSTM, self).__init__()
@@ -28,16 +29,31 @@ class SimpleLSTM(nn.Module):
         self.dropout = nn.Dropout(p=dr)
         self.linearOut = nn.Linear(hidden_size, output_size)
 
-    def forward(self, x,src_lens=None, trg_lens=None):
+    def forward(self, x, *args):
+        """
+        Forward pass of SimpleLSTM
+
+        Parameters:
+        -----------
+        x : torch.Tensor
+            Input tensor
+        *args : optional
+            If provided, args[0] should be sequence lengths for PackedSequence
+        """
         x0 = F.relu(self.linearIn(x))
-        if src_lens is not None:
-            # 训练阶段，支持变长序列
-            packed_x = pack_padded_sequence(x0, src_lens, batch_first=False, enforce_sorted=False)
+
+        # if args is not None and args[0] is not None, use PackedSequence
+        if args and args[0] is not None:
+            seq_lengths = args[0]
+            packed_x = pack_padded_sequence(
+                x0, seq_lengths, batch_first=False, enforce_sorted=False
+            )
             packed_out, (hn, cn) = self.lstm(packed_x)
             out_lstm, _ = pad_packed_sequence(packed_out, batch_first=False)
         else:
-            # 推理阶段，定长序列
+            # standard processing, directly use LSTM
             out_lstm, (hn, cn) = self.lstm(x0)
+
         out_lstm_dr = self.dropout(out_lstm)
         return self.linearOut(out_lstm_dr)
 
