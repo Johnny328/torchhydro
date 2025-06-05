@@ -630,7 +630,7 @@ def fusion_lstm_args():
         },
         train_period=["1983-10-01", "2003-09-30"],
         test_period=["1983-10-01", "2003-09-30"],
-        #test_period=["1993-10-01", "2003-09-30"],
+        # test_period=["1993-10-01", "2003-09-30"],
         dataset="PrecipitationFusionDataset",
         # sampler="KuaiSampler",
         scaler="DapengScaler",
@@ -640,17 +640,23 @@ def fusion_lstm_args():
         save_epoch=2,
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 50},
-        model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
-                      "weights_only": True},
+        model_loader={
+            "load_way": "pth",
+            "pth_path": os.path.join(
+                os.getcwd(), "results", project_name, "model_Ep30.pth"
+            ),
+            "weights_only": True,
+        },
         # lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
         # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001},
         lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         which_first_tensor="sequence",
         continue_train=0,
-        weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
-
+        weight_path=os.path.join(
+            os.getcwd(), "results", project_name, "model_Ep30.pth"
+        ),
     )
+
 
 @pytest.fixture()
 def mopex_lstm_args():
@@ -827,15 +833,21 @@ def mopex_lstm_args():
         save_epoch=2,
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 2},
-        model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
-                      "weights_only": True},
+        model_loader={
+            "load_way": "pth",
+            "pth_path": os.path.join(
+                os.getcwd(), "results", project_name, "model_Ep30.pth"
+            ),
+            "weights_only": True,
+        },
         lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
         # lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
         which_first_tensor="sequence",
         continue_train=0,
-        weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+        weight_path=os.path.join(
+            os.getcwd(), "results", project_name, "model_Ep30.pth"
+        ),
     )
 
 
@@ -1008,9 +1020,13 @@ def gages_lstm_args():
         save_epoch=2,
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 50},
-        model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
-                      "weights_only": True},
+        model_loader={
+            "load_way": "pth",
+            "pth_path": os.path.join(
+                os.getcwd(), "results", project_name, "model_Ep30.pth"
+            ),
+            "weights_only": True,
+        },
         # lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
         lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
@@ -1019,10 +1035,13 @@ def gages_lstm_args():
         # warmup_length=30,
         which_first_tensor="sequence",
         continue_train=0,
-        weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
+        weight_path=os.path.join(
+            os.getcwd(), "results", project_name, "model_Ep30.pth"
+        ),
         # continue_train=0,
         # weight_path="C:\Users\jgchu\source\repos\torchhydro\tests\results\test_mopex\exp001",
     )
+
 
 @pytest.fixture()
 def reservoirs_lstm_args():
@@ -1112,11 +1131,13 @@ def reservoirs_lstm_args():
         # weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
     )
 
+
 @pytest.fixture()
 def reservoir_lstm_args():
     # project_name = "test_reservoir/exp001"
     project_name = os.path.join("test_reservoir", "exp001")
-    project_dir = SETTING["local_data_path"]["root"]
+    project_dir = os.getcwd()
+    # project_dir = "/home/ouyangwenyu/code/torchhydro"
     source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
     source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
     return cmd(
@@ -1156,16 +1177,15 @@ def reservoir_lstm_args():
             "n_hidden_states": 16,
         },
         loss_func="RMSESum",
-        gage_id=["21100150", ],
+        gage_id=[
+            "21100150",
+        ],
         # gage_id_file=os.path.join(source_origin_dir, "reservoir_id(1).csv"),
         batch_size=32,
         forecast_history=0,
         forecast_length=365,
         # rho=365,
-        var_t=[
-            "precip",
-            "year"
-        ],
+        var_t=["precip", "year"],
         # var_t_type=["nldas"],
         var_out=["flow"],
         var_c=["None"],
@@ -1174,13 +1194,11 @@ def reservoir_lstm_args():
             "year": "reservoir",
             "flow": "reservoir",
         },
-
         train_period=["1959-01-01", "2009-12-31"],
         # valid_period=["2010-01-01", "2014-12-31"],
         valid_period=["2010-01-01", "2019-12-31"],
         # test_period=["2015-01-01", "2019-12-31"],
         test_period=["2010-01-01", "2019-12-31"],
-
         dataset="ReservoirDataset",
         # sampler="KuaiSampler",
         scaler="DapengScaler",
@@ -1191,9 +1209,13 @@ def reservoir_lstm_args():
         save_epoch=1,
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 2},
-        model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(project_dir, "results", project_name, "model_Ep32.pth"),
-                      "weights_only": True},
+        model_loader={
+            "load_way": "pth",
+            "pth_path": os.path.join(
+                project_dir, "results", project_name, "model_Ep32.pth"
+            ),
+            "weights_only": True,
+        },
         # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
         lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
@@ -1202,11 +1224,13 @@ def reservoir_lstm_args():
         # weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
     )
 
+
 @pytest.fixture()
 def reservoir_regulation_lstm_args():
     # project_name = "test_reservoir/exp001"
     project_name = os.path.join("test_reservoir_regulation", "exp001")
-    project_dir = SETTING["local_data_path"]["root"]
+    # 使用当前工作目录作为项目根目录
+    project_dir = os.getcwd()
     source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
     source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
     return cmd(
@@ -1249,7 +1273,9 @@ def reservoir_regulation_lstm_args():
             "res_inflow__hidden_states": 8,
         },
         loss_func="RMSESum",
-        gage_id=["21100150", ],
+        gage_id=[
+            "21100150",
+        ],
         # gage_id_file=os.path.join(source_origin_dir, "reservoir_id(1).csv"),
         batch_size=32,
         forecast_history=0,
@@ -1272,7 +1298,6 @@ def reservoir_regulation_lstm_args():
         valid_period=["2010-01-01", "2019-12-31"],
         # test_period=["2015-01-01", "2019-12-31"],
         test_period=["2010-01-01", "2019-12-31"],
-
         dataset="ReservoirREGUDataset",
         # sampler="KuaiSampler",
         scaler="DapengScaler",
@@ -1283,9 +1308,13 @@ def reservoir_regulation_lstm_args():
         save_epoch=1,
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 2},
-        model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(project_dir, "results", project_name, "model_Ep50.pth"),
-                      "weights_only": True},
+        model_loader={
+            "load_way": "pth",
+            "pth_path": os.path.join(
+                project_dir, "results", project_name, "model_Ep50.pth"
+            ),
+            "weights_only": True,
+        },
         # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
         lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
@@ -1294,11 +1323,12 @@ def reservoir_regulation_lstm_args():
         # weight_path=os.path.join(os.getcwd(), "results", project_name, "model_Ep30.pth"),
     )
 
+
 @pytest.fixture()
 def reservoir_inflow_lstm_args():
     # project_name = "test_reservoir/exp001"
     project_name = os.path.join("test_reservoir_inflow", "exp001")
-    project_dir = SETTING["local_data_path"]["root"]
+    project_dir = os.getcwd()
     source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
     source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
     return cmd(
@@ -1338,7 +1368,9 @@ def reservoir_inflow_lstm_args():
             "n_hidden_states": 16,
         },
         loss_func="RMSESum",
-        gage_id=["21100150", ],
+        gage_id=[
+            "21100150",
+        ],
         # gage_id_file=os.path.join(source_origin_dir, "reservoir_id(1).csv"),
         batch_size=32,
         forecast_history=0,
@@ -1356,13 +1388,11 @@ def reservoir_inflow_lstm_args():
             "flow": "reservoir",
             "year": "reservoir",
         },
-
         train_period=["1959-01-01", "2009-12-31"],
         # valid_period=["2010-01-01", "2014-12-31"],
         valid_period=["2010-01-01", "2019-12-31"],
         # test_period=["2015-01-01", "2019-12-31"],
         test_period=["2010-01-01", "2019-12-31"],
-
         dataset="ReservoirREGUDataset",
         # sampler="KuaiSampler",
         scaler="DapengScaler",
@@ -1373,9 +1403,13 @@ def reservoir_inflow_lstm_args():
         save_epoch=1,
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 2},
-        model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(project_dir, "results", project_name, "model_Ep49.pth"),
-                      "weights_only": True},
+        model_loader={
+            "load_way": "pth",
+            "pth_path": os.path.join(
+                project_dir, "results", project_name, "model_Ep49.pth"
+            ),
+            "weights_only": True,
+        },
         # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
         lr_scheduler={0: 1, 10: 0.5, 20: 0.2},
