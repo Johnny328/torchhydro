@@ -30,6 +30,7 @@ from hydroutils import (
     hydro_arithmetric,
     hydro_file,
     hydro_logger,
+)
 from hydrodataset.grdc_caravan import GrdcCaravan
 from hydrodatasource.reader.data_source import (
     SelfMadeHydroDataset,
@@ -733,12 +734,9 @@ class Smap4Camels(SupData4Camels):
             out[ind2, k] = data_temp[ind].values[ind1]
         return out
 
+
 class Reservoirs(HydroDataset):
-    def __init__(
-        self,
-        data_path=os.path.join("reservoirs"),
-        download=False
-    ):
+    def __init__(self, data_path=os.path.join("reservoirs"), download=False):
         """
         Initialization for CAMELS series dataset
 
@@ -776,7 +774,9 @@ class Reservoirs(HydroDataset):
                 "Please check if you have downloaded the data and put it in the correct dir"
             )
         reservoirs_attr_file = os.path.join(reservoirs_dir, "reservoirs_static.nc")
-        reservoirs_time_series_file = os.path.join(reservoirs_dir, "reservoirs_timeseries.nc")
+        reservoirs_time_series_file = os.path.join(
+            reservoirs_dir, "reservoirs_timeseries.nc"
+        )
         return collections.OrderedDict(
             RESERVOIRS_DIR=reservoirs_dir,
             RESERVOIRS_ATTR_FILE=reservoirs_attr_file,
@@ -814,11 +814,16 @@ class Reservoirs(HydroDataset):
         return reservoir_ids
 
     def read_forcing_reservoir(self, reservoir_id, var_lst, t_range_list):
-        reservoir_time_series_file = self.data_source_description["RESERVOIRS_TIME_SERIES_FILE"]
+        reservoir_time_series_file = self.data_source_description[
+            "RESERVOIRS_TIME_SERIES_FILE"
+        ]
         ts = xr.open_dataset(reservoir_time_series_file)
 
         # 确保时间是升序排列
-        assert all(ts["Time"].values[i] < ts["Time"].values[i + 1] for i in range(len(ts["Time"].values) - 1))
+        assert all(
+            ts["Time"].values[i] < ts["Time"].values[i + 1]
+            for i in range(len(ts["Time"].values) - 1)
+        )
 
         # 获取所有时间和水库索引
         time_all = ts["Time"].values.astype("datetime64[D]")
@@ -874,11 +879,15 @@ class Reservoirs(HydroDataset):
     ):
         if var_lst is None:
             return None
-        ts = xr.open_dataset(self.data_source_description["RESERVOIRS_TIME_SERIES_FILE"])
+        ts = xr.open_dataset(
+            self.data_source_description["RESERVOIRS_TIME_SERIES_FILE"]
+        )
         all_vars = ts.data_vars
         if any(var not in ts.variables for var in var_lst):
             raise ValueError(f"var_lst must all be in {all_vars}")
-        return ts[var_lst].sel(Reservoir_ID=reservoir_id_lst, Time=slice(t_range[0], t_range[1]))
+        return ts[var_lst].sel(
+            Reservoir_ID=reservoir_id_lst, Time=slice(t_range[0], t_range[1])
+        )
 
     def read_attr_xrdataset(self, reservoir_id_lst=None, var_lst=None, **kwargs):
         if var_lst is None or len(var_lst) == 0:
@@ -932,12 +941,7 @@ class Reservoirs(HydroDataset):
         )
         return data_output_ds
 
-    def read_attr(
-        self,
-        reservoir_id_lst: list = None,
-        var_lst=None,
-        **kwargs
-    ):
+    def read_attr(self, reservoir_id_lst: list = None, var_lst=None, **kwargs):
         data_attr_ds = self.read_attr_xrdataset(
             reservoir_id_lst,
             var_lst,
@@ -945,12 +949,9 @@ class Reservoirs(HydroDataset):
         )
         return data_attr_ds
 
+
 class Gages(HydroDataset):
-    def __init__(
-        self,
-        data_path=os.path.join("gages"),
-        download=False
-    ):
+    def __init__(self, data_path=os.path.join("gages"), download=False):
         """
         Initialization for CAMELS series dataset
 
@@ -1668,8 +1669,8 @@ class Gages(HydroDataset):
         attrs, var_lst, var_dict, f_dict = self.read_attr_all(gages_id)
         # unify id to basin
         attrs_df = pd.DataFrame(attrs, columns=var_lst)
-        attrs_df['basin'] = gages_id
-        attrs_df.set_index('basin', inplace=True)
+        attrs_df["basin"] = gages_id
+        attrs_df.set_index("basin", inplace=True)
         attrs_df = attrs_df.loc[:, ~attrs_df.columns.duplicated()]
         # attrs_df.key.name = "basin"
         # We use xarray dataset to cache all data
@@ -1972,7 +1973,6 @@ class Gages(HydroDataset):
             "ASPECT_DEGREES": "degree",
             "ASPECT_NORTHNESS": "dimensionless",
             "ASPECT_EASTNESS": "dimensionless",
-
         }
 
         # Assign units to the variables in the Dataset
@@ -1987,8 +1987,7 @@ class Gages(HydroDataset):
         return ds_from_df
 
     def cache_streamflow_xrdataset(self):
-        """Save all basins' streamflow data in a netcdf file in the cache directory
-        """
+        """Save all basins' streamflow data in a netcdf file in the cache directory"""
         cache_npy_file = CACHE_DIR.joinpath("gages_streamflow.npy")
         json_file = CACHE_DIR.joinpath("gages_streamflow.json")
         if (not os.path.isfile(cache_npy_file)) or (not os.path.isfile(json_file)):
@@ -2016,8 +2015,7 @@ class Gages(HydroDataset):
         )
 
     def cache_forcing_xrdataset(self):
-        """Save all daymet basin-forcing data in a netcdf file in the cache directory.
-        """
+        """Save all daymet basin-forcing data in a netcdf file in the cache directory."""
         cache_npy_file = CACHE_DIR.joinpath("gages_daymet_forcing.npy")
         json_file = CACHE_DIR.joinpath("gages_daymet_forcing.json")
         if (not os.path.isfile(cache_npy_file)) or (not os.path.isfile(json_file)):
@@ -2182,7 +2180,7 @@ def get_dor_values(gages: Gages, usgs_id) -> np.array:
     # attr_lst = ["RUNAVE7100", "STOR_NID_2009"]
     attr_lst = ["RUNAVE7100", "STOR_NOR_2009"]
     data_attr = gages.read_constant_cols(usgs_id, attr_lst)
-    run_avg = data_attr[:, 0] * (10 ** (-3)) * (10 ** 6)  # m^3 per year
+    run_avg = data_attr[:, 0] * (10 ** (-3)) * (10**6)  # m^3 per year
     nor_storage = data_attr[:, 1] * 1000  # m^3
     return nor_storage / run_avg
 
@@ -2260,31 +2258,29 @@ class Mopex(HydroDataset):
 
     def read_forcing_gage(self, usgs_id, var_lst, t_range_list):
         data_folder = self.data_source_description["MOPEXFORCING_DIR"]
-        data_file = os.path.join(
-            data_folder, f"{usgs_id}.dly"
-        )
+        data_file = os.path.join(data_folder, f"{usgs_id}.dly")
         print("reading", "forcing data ", usgs_id)
-        date_temp = pd.read_fwf(data_file, widths=[8], names=['date'])
+        date_temp = pd.read_fwf(data_file, widths=[8], names=["date"])
 
         columns = [
             "mean_areal_precipitation",
             "climatic_potential_evaporation",
             "daily_streamflow_discharge",
             "daily_max_air_temperature",
-            "daily_min_air_temperature"
+            "daily_min_air_temperature",
         ]
 
         data_temp = []
 
-        with open(data_file, 'r') as file:
+        with open(data_file, "r") as file:
             for line in file:
                 # 从第9个字符开始截取字符串，然后分割
                 data_parts = line[8:].strip().split()
                 if len(data_parts) >= len(columns):  # 确保行有足够的数据
-                    data_temp.append(data_parts[:len(columns)])  # 只添加需要的列数
+                    data_temp.append(data_parts[: len(columns)])  # 只添加需要的列数
 
         data_temp = pd.DataFrame(data_temp, columns=columns)
-        standardize_date = [re.sub(r'\s', '0', date) for date in date_temp['date']]
+        standardize_date = [re.sub(r"\s", "0", date) for date in date_temp["date"]]
 
         # df_date = date_temp["date"]
 
@@ -2300,7 +2296,7 @@ class Mopex(HydroDataset):
             "climatic_potential_evaporation",
             "daily_streamflow_discharge",
             "daily_max_air_temperature",
-            "daily_min_air_temperature"
+            "daily_min_air_temperature",
         ]
         # df_date = data_temp["date"]
         # date = pd.to_datetime(df_date).values.astype("datetime64[D]")
@@ -2383,8 +2379,7 @@ class Mopex(HydroDataset):
         np.save(cache_npy_file, data)
 
     def cache_forcing_xrdataset(self):
-        """Save all basin-forcing data in a netcdf file in the cache directory.
-        """
+        """Save all basin-forcing data in a netcdf file in the cache directory."""
         cache_npy_file = CACHE_DIR.joinpath("mopex_forcing.npy")
         json_file = CACHE_DIR.joinpath("mopex_forcing.json")
         if (not os.path.isfile(cache_npy_file)) or (not os.path.isfile(json_file)):
@@ -2472,7 +2467,10 @@ class GagesMopexPrepFusion(HydroDataset):
         self.gages = Gages(gages_data_path)
         self.mopex = Mopex(mopex_data_path)
         self.gages_sites = list(
-            set(self.gages.read_site_info()["STAID"]).intersection(set(self.mopex.read_site_info())))
+            set(self.gages.read_site_info()["STAID"]).intersection(
+                set(self.mopex.read_site_info())
+            )
+        )
 
     def get_name(self):
         return "GagesMopexPrepFusion"
@@ -2526,12 +2524,7 @@ class GagesMopexPrepFusion(HydroDataset):
         )
         return data_output_ds
 
-    def read_attr(
-        self,
-        gage_id_lst: list = None,
-        var_lst=None,
-        **kwargs
-    ):
+    def read_attr(self, gage_id_lst: list = None, var_lst=None, **kwargs):
         data_attr_ds = self.gages.read_attr_xrdataset(
             gage_id_lst,
             var_lst,
@@ -2557,10 +2550,14 @@ class GagesMopexPrepFusion(HydroDataset):
         var_lst: list = None,
     ) -> np.array:
         gages_data = self.gages.read_relevant_cols(
-            gage_id_lst, t_range, var_lst,
+            gage_id_lst,
+            t_range,
+            var_lst,
         )
         mopex_data = self.mopex.read_relevant_cols(
-            gage_id_lst, t_range, var_lst,
+            gage_id_lst,
+            t_range,
+            var_lst,
         )
         return np.concatenate((gages_data, mopex_data), axis=1)
 
@@ -2603,7 +2600,10 @@ class MopexPrepGagesAttrFusion(HydroDataset):
         self.gages = Gages(gages_data_path)
         self.mopex = Mopex(mopex_data_path)
         self.gages_sites = list(
-            set(self.gages.read_site_info()["STAID"]).intersection(set(self.mopex.read_site_info())))
+            set(self.gages.read_site_info()["STAID"]).intersection(
+                set(self.mopex.read_site_info())
+            )
+        )
 
     def get_name(self):
         return "MopexPrepGagesAttrFusion"
@@ -2650,12 +2650,7 @@ class MopexPrepGagesAttrFusion(HydroDataset):
         )
         return data_output_ds
 
-    def read_attr(
-        self,
-        gage_id_lst: list = None,
-        var_lst=None,
-        **kwargs
-    ):
+    def read_attr(self, gage_id_lst: list = None, var_lst=None, **kwargs):
         data_attr_ds = self.gages.read_attr_xrdataset(
             gage_id_lst,
             var_lst,
@@ -2681,10 +2676,14 @@ class MopexPrepGagesAttrFusion(HydroDataset):
         var_lst: list = None,
     ) -> np.array:
         gages_data = self.gages.read_relevant_cols(
-            gage_id_lst, t_range, var_lst,
+            gage_id_lst,
+            t_range,
+            var_lst,
         )
         mopex_data = self.mopex.read_relevant_cols(
-            gage_id_lst, t_range, var_lst,
+            gage_id_lst,
+            t_range,
+            var_lst,
         )
         return np.concatenate((gages_data, mopex_data), axis=1)
 
@@ -2697,12 +2696,9 @@ class MopexPrepGagesAttrFusion(HydroDataset):
     def read_mean_prcp(self, gage_id_lst) -> np.array:
         return self.gages.read_mean_prcp(gage_id_lst)
 
+
 class Reservoir(HydroDataset):
-    def __init__(
-        self,
-        data_path=os.path.join("reservoir"),
-        download=False
-    ):
+    def __init__(self, data_path=os.path.join("reservoir"), download=False):
         """
         Initialization for CAMELS series dataset
 
@@ -2772,17 +2768,24 @@ class Reservoir(HydroDataset):
         """
         # reservoir_attr_file = self.data_source_description["RESERVOIRS_ATTR_FILE"]
         # ts = xr.open_dataset(reservoir_attr_file)
-        reservoir_ids = ["21100150", ]
+        reservoir_ids = [
+            "21100150",
+        ]
         reservoir_ids.sort()
         assert all(x < y for x, y in zip(reservoir_ids, reservoir_ids[1:]))
         return reservoir_ids
 
     def read_forcing_reservoir(self, reservoir_id, var_lst, t_range_list):
-        reservoir_time_series_file = self.data_source_description["RESERVOIR_TIME_SERIES_FILE"]
+        reservoir_time_series_file = self.data_source_description[
+            "RESERVOIR_TIME_SERIES_FILE"
+        ]
         ts = xr.open_dataset(reservoir_time_series_file)
 
         # 确保时间是升序排列
-        assert all(ts["time"].values[i] < ts["time"].values[i + 1] for i in range(len(ts["time"].values) - 1))
+        assert all(
+            ts["time"].values[i] < ts["time"].values[i + 1]
+            for i in range(len(ts["time"].values) - 1)
+        )
 
         # 获取所有时间和水库索引
         time_all = ts["time"].values.astype("datetime64[D]")
@@ -2842,7 +2845,9 @@ class Reservoir(HydroDataset):
         all_vars = ts.data_vars
         if any(var not in ts.variables for var in var_lst):
             raise ValueError(f"var_lst must all be in {all_vars}")
-        return ts[var_lst].sel(station=reservoir_id_lst, time=slice(t_range[0], t_range[1]))
+        return ts[var_lst].sel(
+            station=reservoir_id_lst, time=slice(t_range[0], t_range[1])
+        )
 
     # def read_attr_xrdataset(self, reservoir_id_lst=None, var_lst=None, **kwargs):
     #     if var_lst is None or len(var_lst) == 0:

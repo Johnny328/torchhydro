@@ -452,13 +452,10 @@ def dpl_args():
             "test_epoch": 2,
         },
         sampler="KuaiSampler",
-        n_output=1,
         opt="Adam",
-        train_epoch=2,
-        fill_nan=["no", "mean"],
-        model_loader={"load_way": "specified", "test_epoch": 2},
         lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
         which_first_tensor="sequence",
+        train_mode=False,
     )
 
 
@@ -1119,6 +1116,7 @@ def reservoirs_lstm_args():
 def reservoir_lstm_args():
     # project_name = "test_reservoir/exp001"
     project_name = os.path.join("test_reservoir", "exp001")
+    project_dir = SETTING["local_data_path"]["root"]
     source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
     source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
     return cmd(
@@ -1189,12 +1187,12 @@ def reservoir_lstm_args():
         n_output=1,
         opt="Adam",
         train_epoch=50,
-        train_mode=0,
+        # train_mode=0,
         save_epoch=1,
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 2},
         model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(os.getcwd(), "results", project_name, "model_Ep32.pth"),
+                      os.path.join(project_dir, "results", project_name, "model_Ep32.pth"),
                       "weights_only": True},
         # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
@@ -1208,6 +1206,7 @@ def reservoir_lstm_args():
 def reservoir_regulation_lstm_args():
     # project_name = "test_reservoir/exp001"
     project_name = os.path.join("test_reservoir_regulation", "exp001")
+    project_dir = SETTING["local_data_path"]["root"]
     source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
     source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
     return cmd(
@@ -1285,7 +1284,7 @@ def reservoir_regulation_lstm_args():
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 2},
         model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(os.getcwd(), "results", project_name, "model_Ep50.pth"),
+                      os.path.join(project_dir, "results", project_name, "model_Ep50.pth"),
                       "weights_only": True},
         # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
@@ -1299,6 +1298,7 @@ def reservoir_regulation_lstm_args():
 def reservoir_inflow_lstm_args():
     # project_name = "test_reservoir/exp001"
     project_name = os.path.join("test_reservoir_inflow", "exp001")
+    project_dir = SETTING["local_data_path"]["root"]
     source_origin_dir = SETTING["local_data_path"]["datasets-origin"]
     source_interim_dir = SETTING["local_data_path"]["datasets-interim"]
     return cmd(
@@ -1374,7 +1374,7 @@ def reservoir_inflow_lstm_args():
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 2},
         model_loader={"load_way": "pth", "pth_path":
-                      os.path.join(os.getcwd(), "results", project_name, "model_Ep49.pth"),
+                      os.path.join(project_dir, "results", project_name, "model_Ep49.pth"),
                       "weights_only": True},
         # lr_scheduler={0: 0.01, 10: 0.005, 20: 0.001, 30: 0.0005, 40: 0.0001},
         # lr_scheduler={0: 1, 1: 0.5, 2: 0.2},
