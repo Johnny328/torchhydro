@@ -94,7 +94,7 @@ def _rolling_preds_for_once_eval(
     return the_array_.reshape(ngrid, recover_len, nf)
 
 
-def model_infer(seq_first, device, model, xs, ys):
+def model_infer(seq_first, device, model, xs, ys, more_outputs=False):
     """TODO: Need to be optimized for the case of variable length sequence
 
     Parameters
@@ -140,14 +140,17 @@ def model_infer(seq_first, device, model, xs, ys):
             else ys.to(device)
         )
     output = model(*xs)
+    output_more = None
     if type(output) is tuple:
         # Convention: y_p must be the first output of model
+        if more_outputs:
+            output_more = output[1:]
         output = output[0]
     if seq_first:
         output = output.transpose(0, 1)
         if ys is not None:
             ys = ys.transpose(0, 1)
-    return ys, output
+    return (ys, output, output_more) if more_outputs else (ys, output)
 
 
 class EarlyStopper(object):

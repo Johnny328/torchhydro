@@ -17,6 +17,9 @@ from functools import reduce
 from typing import Dict, Tuple
 
 import numpy as np
+import pandas as pd
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import xarray as xr
 import torch
 import torch.distributed as dist
@@ -390,13 +393,77 @@ class DeepHydro(DeepHydroInterface):
             for i, (xs, ys) in enumerate(
                 tqdm(test_dataloader, desc="Model inference", unit="batch")
             ):
-                ys, pred = model_infer(seq_first, device, self.model, xs, ys)
+                ys, pred, more_outputs = model_infer(
+                    seq_first, device, self.model, xs, ys, more_outputs=True
+                )
                 test_preds.append(pred.cpu())
                 obss.append(ys.cpu())
                 if i % 100 == 0:
                     torch.cuda.empty_cache()
             pred = torch.cat(test_preds, dim=0).numpy()  # 在最后转换为numpy
             obs = torch.cat(obss, dim=0).numpy()  # 在最后转换为numpy
+        if more_outputs is not None:
+            lstm_res_regulation_output_numpy = more_outputs[0].detach().cpu().numpy()
+            lstm_res_regulation_output_data = lstm_res_regulation_output_numpy[
+                :, :
+            ].squeeze()
+            start_date = "2010-01-01"
+            end_date = "2019-12-31"
+            time = pd.date_range(start=start_date, end=end_date, freq="D")
+
+            assert len(time) == len(
+                lstm_res_regulation_output_data
+            ), f"时间列长度 ({len(time)}) 与数据列长度 ({len(lstm_res_regulation_output_data)}) 不一致"
+            lstm_res_regulation_output_df = pd.DataFrame(
+                {
+                    "time": time,
+                    "lstm_res_regulation_output": lstm_res_regulation_output_data,
+                }
+            )
+
+            lstm_res_regulation_output_df_filename = os.path.join(
+                self.cfgs["data_cfgs"]["case_dir"], "lstm_res_regulation_efficiency.csv"
+            )
+            lstm_res_regulation_output_df.to_csv(
+                lstm_res_regulation_output_df_filename, index=False
+            )
+
+            print(f"数据已保存为 {lstm_res_regulation_output_df_filename}")
+
+            plt.figure(figsize=(10, 6))
+            plt.plot(
+                time,
+                lstm_res_regulation_output_data,
+                label="LSTM Regulation Efficiency",
+                color="blue",
+                marker="o",
+                linestyle="-",
+            )
+            plt.xlabel("Time step")
+            plt.ylabel("Regulation Efficiency")
+            plt.title("Visualization of lstm_res_regulation_efficiency")
+
+            # 设置时间格式为 '年-月-日'
+            # plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+
+            ax = plt.gca()
+            ax.xaxis.set_major_locator(
+                mdates.MonthLocator(bymonth=[7], bymonthday=1)
+            )  # 每年显示7月1日
+            ax.xaxis.set_major_formatter(
+                mdates.DateFormatter("%Y-%m-%d")
+            )  # 格式为 '年-月-日'
+
+            plt.xticks(rotation=45)  # 使时间轴标签更清晰
+            plt.tight_layout()  # 自动调整布局，使标签不重叠
+            plt.legend()
+            lstm_res_regulation_output_image_filename = os.path.join(
+                self.cfgs["data_cfgs"]["case_dir"], "lstm_res_regulation_efficiency.png"
+            )
+            plt.savefig(lstm_res_regulation_output_image_filename)
+            plt.close()
+
+            print(f"图像已保存：{lstm_res_regulation_output_image_filename}")
         if pred.ndim == 2:
             # TODO: check
             # the ndim is 2 meaning we use an Nto1 mode

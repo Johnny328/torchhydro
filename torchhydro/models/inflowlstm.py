@@ -54,4 +54,4 @@ class InflowLstmModel(nn.Module):
         lstm_res_inflow_output = self.res_inflow_model(x_normalized[:, :, :2])  # 降雨和年份序列
 
         flow_prediction_output = regulation_factor * lstm_res_inflow_output
-        return flow_prediction_output
+        return flow_prediction_output, regulation_factor, lstm_res_inflow_output

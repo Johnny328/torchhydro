@@ -1187,7 +1187,7 @@ def reservoir_lstm_args():
         n_output=1,
         opt="Adam",
         train_epoch=50,
-        # train_mode=0,
+        train_mode=0,
         save_epoch=1,
         fill_nan=["no"],
         # model_loader={"load_way": "specified", "test_epoch": 2},
