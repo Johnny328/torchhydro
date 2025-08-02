@@ -1353,8 +1353,9 @@ def torch_single_train(
         # mask handling is already done inside model_infer function
         trg, output = model_infer(seq_first, device, model, batch, variable_length_cfgs)
         loss = compute_loss(trg, output, criterion, **kwargs)
-        if loss > 100:
-            print("Warning: high loss detected")
+        # 注释掉高loss警告，减少训练过程中的输出
+        # if loss > 100:
+        #     print("Warning: high loss detected")
         if torch.isnan(loss):
             raise ValueError("nan loss detected")
             # continue
