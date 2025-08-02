@@ -225,7 +225,8 @@ def default_config_file() -> Dict[str, Any]:
             "station_cols": ["DRP"],  # TM=温度, 从站点数据中选择变量
             "station_rm_nan": True,
             "station_time_units": ["3h"],
-            "station_scaler_type": "DapengScaler",            
+            "station_scaler_type": "DapengScaler",
+            "use_basin_features": True,   # （决定是否使用流域平均的一些属性）或者不设置（默认为True），如果是false，则只使用站点特征
             # 邻接矩阵配置
             "use_adjacency": True,
             "adjacency_src_col": "ID",
