@@ -2073,6 +2073,7 @@ class GNNDataset(FloodEventDataset):
     - station_cols: List of station variable names to load
     - station_rm_nan: Whether to remove/interpolate NaN values (default: True)
     - station_scaler_type: Scaler type for station data normalization
+    - use_basin_features: Whether to merge basin-level features with station features (default: True)
     - use_adjacency: Whether to load adjacency matrices (default: True)  
     - adjacency_src_col: Source node column name (default: "ID")
     - adjacency_dst_col: Destination node column name (default: "NEXTDOWNID")
@@ -2614,14 +2615,16 @@ class GNNDataset(FloodEventDataset):
     def __getitem__(self, item: int):
         """Get one sample with GNN-specific data format: sxc, y, edge_index, edge_attr
         
-        This method merges basin-level features (xc) into each station node's features (sxc),
-        so each node's input includes both station and basin attributes.
+        This method can optionally merge basin-level features (xc) into each station node's features (sxc),
+        controlled by the use_basin_features parameter. When use_basin_features=False, only station-level
+        features are used.
         
         Returns
         -------
         tuple
             (sxc, y, edge_index, edge_attr) where:
-            - sxc: Station features merged with basin features [num_stations, seq_length, feature_dim]
+            - sxc: Station features [num_stations, seq_length, feature_dim] 
+                   (optionally merged with basin features based on use_basin_features)
             - y: Target values for prediction [forecast_length, output_dim]  
             - edge_index: Edge connectivity [2, num_edges]
             - edge_attr: Edge attributes [num_edges, edge_attr_dim]
@@ -2665,7 +2668,9 @@ class GNNDataset(FloodEventDataset):
         
         # Get basin-level features (xc) for merging
         # x contains basin-level features, we need to replicate it for each station
-        if x is not None and x.ndim >= 2:
+        use_basin_features = self.gnn_cfgs.get("use_basin_features", True)
+        
+        if use_basin_features and x is not None and x.ndim >= 2:
             xc = x  # [seq_length, basin_feature_dim]
             basin_feature_dim = xc.shape[-1]
             seq_length, num_stations, station_feature_dim = sxc_raw.shape
@@ -2681,7 +2686,7 @@ class GNNDataset(FloodEventDataset):
             # Transpose to get desired shape: [num_stations, seq_length, feature_dim]
             sxc = sxc_temp.transpose(1, 0, 2)
         else:
-            # If no basin features, use only station features and transpose
+            # If not using basin features or no basin features available, use only station features and transpose
             # sxc: [num_stations, seq_length, station_feature_dim]
             sxc = sxc_raw.transpose(1, 0, 2)
         
