@@ -147,8 +147,9 @@ class GNNBaseModel(Module, ABC):
             evolution.append(x.detach())
         
         # === 步骤3：轻量GNN空间建模 ===
+        x_0 = x.clone()  # 保存初始特征，用于需要x_0的模型（如GCNII）
         for layer in self.layers:
-            x = self.apply_layer(layer, x, edge_index, edge_weight)
+            x = self.apply_layer(layer, x, edge_index, edge_weight, x_0)
             x = F.relu(x)
             if self.dropout is not None:
                 x = self.dropout(x)
@@ -380,7 +381,16 @@ class GATModel(GNNBaseModel):
         x_0: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         if isinstance(layer, GATConv):
-            return layer(x, edge_index, edge_attr=edge_weight)
+            # GAT使用edge_attr参数
+            if edge_weight is not None and edge_weight.numel() > 0:
+                # 确保edge_weight的维度正确
+                if edge_weight.dim() == 1:
+                    edge_attr = edge_weight.unsqueeze(-1)
+                else:
+                    edge_attr = edge_weight
+                return layer(x, edge_index, edge_attr=edge_attr)
+            else:
+                return layer(x, edge_index)
         else:
             return layer(x, edge_index)
 
@@ -441,9 +451,9 @@ class GNNMLP(GNNBaseModel):
     ) -> None:
         
         def layer_gen() -> Linear:
-            # 使用基类计算的实际隐藏维度
-            spatial_hidden = min(32, max(16, hidden_channels))
-            return Linear(spatial_hidden, spatial_hidden, weight_initializer="kaiming_uniform")
+            # 使用与基类一致的隐藏维度
+            unified_hidden_size = min(hidden_channels, 64)
+            return Linear(unified_hidden_size, unified_hidden_size, weight_initializer="kaiming_uniform")
 
         super().__init__(
             in_channels,
@@ -563,61 +573,11 @@ class GCNII(GNNBaseModel):
         use_temporal_modeling: bool = True,
     ) -> None:
         
-        def layer_gen() -> GCN2Conv:
-            spatial_hidden = min(32, max(16, hidden_channels))
-            return GCN2Conv(spatial_hidden, alpha=0.5, add_self_loops=False)
-
-        super().__init__(
-            in_channels,
-            hidden_channels,
-            num_hidden,
-            param_sharing,
-            layer_gen,
-            edge_orientation,
-            edge_weights,
-            output_size,
-            aggregate_to_graph,
-            seq_len,
-            num_features,
-            output_time,
-            dropout,
-            use_temporal_modeling,
-        )
-
-    def apply_layer(
-        self,
-        layer: Module,
-        x: torch.Tensor,
-        x_0: torch.Tensor,
-        edge_index: torch.Tensor,
-        edge_weight: torch.Tensor,
-    ) -> torch.Tensor:
-        return layer(x, x_0, edge_index, edge_weight)
-
-
-class ResGAT(GNNBaseModel):
-    """简化的GAT模型"""
-    
-    def __init__(
-        self,
-        in_channels: int,
-        hidden_channels: int,
-        num_hidden: int = 2,
-        param_sharing: bool = False,
-        edge_orientation: Optional[str] = None,
-        edge_weights: Optional[torch.Tensor] = None,
-        output_size: int = 1,
-        aggregate_to_graph: bool = False,
-        seq_len: Optional[int] = None,
-        num_features: Optional[int] = None,
-        output_time: Optional[int] = None,
-        dropout: float = 0.1,
-        use_temporal_modeling: bool = True,
-    ) -> None:
+        # 统一隐藏层维度，确保与基类一致
+        unified_hidden_size = min(hidden_channels, 64)
         
-        def layer_gen() -> GATConv:
-            spatial_hidden = min(32, max(16, hidden_channels))
-            return GATConv(spatial_hidden, spatial_hidden, add_self_loops=False)
+        def layer_gen() -> GCN2Conv:
+            return GCN2Conv(unified_hidden_size, alpha=0.5, add_self_loops=False)
 
         super().__init__(
             in_channels,
@@ -644,10 +604,84 @@ class ResGAT(GNNBaseModel):
         edge_weight: torch.Tensor,
         x_0: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # GAT处理边权重
-        if edge_weight.dim() == 1:
-            edge_index = edge_index[:, edge_weight != 0]
-        return x + layer(x, edge_index, edge_weight)
+        if isinstance(layer, GCN2Conv):
+            if x_0 is None:
+                # 如果没有提供初始特征，使用当前特征作为初始特征
+                x_0 = x
+            return layer(x, x_0, edge_index, edge_weight)
+        else:
+            return layer(x, edge_index)
+
+
+class ResGAT(GNNBaseModel):
+    """简化的GAT模型"""
+    
+    def __init__(
+        self,
+        in_channels: int,
+        hidden_channels: int,
+        num_hidden: int = 2,
+        param_sharing: bool = False,
+        edge_orientation: Optional[str] = None,
+        edge_weights: Optional[torch.Tensor] = None,
+        output_size: int = 1,
+        aggregate_to_graph: bool = False,
+        seq_len: Optional[int] = None,
+        num_features: Optional[int] = None,
+        output_time: Optional[int] = None,
+        dropout: float = 0.1,
+        use_temporal_modeling: bool = True,
+    ) -> None:
+        
+        # 统一隐藏层维度，确保与基类一致
+        unified_hidden_size = min(hidden_channels, 64)
+        
+        def layer_gen() -> GATConv:
+            return GATConv(unified_hidden_size, unified_hidden_size, add_self_loops=False)
+
+        super().__init__(
+            in_channels,
+            hidden_channels,
+            num_hidden,
+            param_sharing,
+            layer_gen,
+            edge_orientation,
+            edge_weights,
+            output_size,
+            aggregate_to_graph,
+            seq_len,
+            num_features,
+            output_time,
+            dropout,
+            use_temporal_modeling,
+        )
+
+    def apply_layer(
+        self,
+        layer: Module,
+        x: torch.Tensor,
+        edge_index: torch.Tensor,
+        edge_weight: torch.Tensor,
+        x_0: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if isinstance(layer, GATConv):
+            # GAT不直接使用edge_weight，而是通过edge_attr
+            # 如果edge_weight是一维的，需要重新构建edge_index以移除零权重边
+            if edge_weight is not None and edge_weight.dim() == 1:
+                valid_edges = edge_weight != 0
+                if valid_edges.sum() > 0:
+                    filtered_edge_index = edge_index[:, valid_edges]
+                    filtered_edge_weight = edge_weight[valid_edges]
+                    # GAT使用edge_attr参数而不是edge_weight
+                    return x + layer(x, filtered_edge_index, edge_attr=filtered_edge_weight.unsqueeze(-1) if filtered_edge_weight.dim() == 1 else filtered_edge_weight)
+                else:
+                    # 如果没有有效边，只处理自环
+                    return x + layer(x, edge_index)
+            else:
+                return x + layer(x, edge_index)
+        else:
+            # 其他类型的层
+            return x + layer(x, edge_index)
 
 
 # 保持向后兼容性的别名

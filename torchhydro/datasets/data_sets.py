@@ -2054,6 +2054,48 @@ class FloodEventDplDataset(FloodEventDataset):
         return (x_train, z_train), y_train
 
 
+# Watershed topology mapping for spatial sensitivity testing
+# Define upstream, midstream, and downstream stations for each basin
+WATERSHED_TOPOLOGY = {
+    '21110150': {
+        'upstream_stations': ['21140350'],
+        'midstream_stations': ['21113250'],
+        'downstream_stations': ['21110200']
+    },
+    '20800900': {
+        'upstream_stations': ['20821750'],
+        'midstream_stations': ['20821900'],
+        'downstream_stations': ['20800900']
+    },
+    '20810200': {
+        'upstream_stations': ['20820350'],
+        'midstream_stations': ['20810150'],
+        'downstream_stations': ['20810200']
+    },
+    '21100150': {
+        'upstream_stations': ['21120050'],
+        'midstream_stations': ['21100050'],
+        'downstream_stations': ['21100150']
+    },
+    '21113800': {
+        'upstream_stations': ['21142000'],
+        'midstream_stations': ['21142100'],
+        'downstream_stations': ['21142150']
+    },
+    '21401050': {
+        'upstream_stations': ['32680000'],
+        'midstream_stations': ['32740000'],
+        'downstream_stations': ['32730000']
+    },    
+    
+    '21401550': {
+        'upstream_stations': ['21422650'],
+        'midstream_stations': ['21401500'],
+        'downstream_stations': ['21401550']
+    }
+}
+
+
 class GNNDataset(FloodEventDataset):
     """Optimized GNN Dataset for hydrological Graph Neural Network tasks.
     
@@ -2099,6 +2141,9 @@ class GNNDataset(FloodEventDataset):
         
         # Store GNN-specific settings
         self.gnn_cfgs = cfgs["data_cfgs"].get("station_cfgs", {})
+        
+        # Store full config for spatial testing
+        self.cfgs = cfgs
         
         # Initialize parent (this will call BaseDataset._load_data() automatically)
         super(GNNDataset, self).__init__(cfgs, is_tra_val_te)
@@ -2666,6 +2711,35 @@ class GNNDataset(FloodEventDataset):
             dummy_station_features = 1  # Number of dummy features
             sxc_raw = np.zeros((actual_length, 1, dummy_station_features))  # [seq_length, 1, 1]
         
+        # Apply spatial test rainfall amplification if in test mode
+        if hasattr(self, 'cfgs') and sxc_raw is not None:
+            training_cfgs = self.cfgs.get('training_cfgs', {})
+            train_mode = training_cfgs.get('train_mode', True)
+            spatial_test_mode = training_cfgs.get('spatial_test_mode', None)
+            
+            # Get basin ID for spatial test
+            basin_id_with_prefix = self.t_s_dict["sites_id"][basin]
+            basin_id = self._convert_basin_to_station_ids([basin_id_with_prefix])[0]
+            
+            # Apply spatial test only in test mode, for basins with defined topology, and if spatial_test_mode is specified
+            if not train_mode and spatial_test_mode and basin_id in WATERSHED_TOPOLOGY:
+                # Get station order from adjacency data to map station IDs to indices
+                adjacency_data = self.get_adjacency_data(basin)
+                if adjacency_data and 'node_to_idx' in adjacency_data:
+                    # Create station order list from node_to_idx mapping
+                    node_to_idx = adjacency_data['node_to_idx']
+                    station_order = [None] * len(node_to_idx)
+                    for station_id, idx in node_to_idx.items():
+                        station_order[idx] = station_id
+                    
+                    # Apply rainfall amplification
+                    sxc_raw = self._apply_spatial_rainfall_amplification(
+                        sxc_raw, spatial_test_mode, basin_id, station_order
+                    )
+                else:
+                    LOGGER.warning(f"Basin {basin_id}: No adjacency data available for spatial test, skipping rainfall amplification")
+        
+        
         # Get basin-level features (xc) for merging
         # x contains basin-level features, we need to replicate it for each station
         use_basin_features = self.gnn_cfgs.get("use_basin_features", True)
@@ -2736,4 +2810,89 @@ class GNNDataset(FloodEventDataset):
             y = torch.tensor(y, dtype=torch.float)
             
         return sxc, y, edge_index, edge_weight # edge_attr
+
+    def _apply_spatial_rainfall_amplification(self, station_data, spatial_test_mode, basin_id, station_order):
+        """Apply spatial test transformation by amplifying rainfall at specific stations
+        
+        This method amplifies rainfall at specific stations to test spatial sensitivity:
+        - sim1: Baseline - no amplification (return original data)
+        - sim2: Amplify rainfall at midstream stations by 2x
+        - sim3: Amplify rainfall at downstream stations by 2x
+        
+        Parameters
+        ----------
+        station_data : np.ndarray
+            Station data array [time, station, variable] where variable includes rainfall (DRP)
+        spatial_test_mode : str
+            Test mode: 'normal', 'sim1', 'sim2', or 'sim3'
+        basin_id : str
+            Basin identifier (should be '21110150')
+        station_order : list
+            Ordered list of station IDs corresponding to station dimension
+            
+        Returns
+        -------
+        np.ndarray
+            Modified station data with amplified rainfall at target stations
+        """
+        if station_data is None or spatial_test_mode == 'normal':
+            # No amplification for baseline or no data
+            if spatial_test_mode == 'normal':
+                LOGGER.info(f"Basin {basin_id}: Spatial test mode normal - Baseline (no rainfall amplification)")
+            return station_data
+        
+        # Get watershed topology for this basin
+        if basin_id not in WATERSHED_TOPOLOGY:
+            LOGGER.warning(f"Basin {basin_id}: No watershed topology defined, no spatial test applied")
+            return station_data
+        
+        watershed_topology = WATERSHED_TOPOLOGY[basin_id]
+        
+        # Determine target stations based on test mode
+        target_stations = []
+        if spatial_test_mode == 'sim1':
+            target_stations = watershed_topology['upstream_stations']
+            LOGGER.info(f"Basin {basin_id}: Spatial test mode sim1 - Amplifying upstream rainfall by 2x")
+        elif spatial_test_mode == 'sim2':
+            target_stations = watershed_topology['midstream_stations']
+            LOGGER.info(f"Basin {basin_id}: Spatial test mode sim2 - Amplifying midstream rainfall by 2x")
+        elif spatial_test_mode == 'sim3':
+            target_stations = watershed_topology['downstream_stations']
+            LOGGER.info(f"Basin {basin_id}: Spatial test mode sim3 - Amplifying downstream rainfall by 2x")
+        else:
+            LOGGER.warning(f"Basin {basin_id}: Unknown spatial test mode '{spatial_test_mode}', no amplification applied")
+            return station_data
+        
+        # Create copy of station data to modify
+        modified_station_data = station_data.copy()
+        
+        # Find indices of target stations in station_order
+        target_indices = []
+        for station_id in target_stations:
+            if station_id in station_order:
+                idx = station_order.index(station_id)
+                target_indices.append(idx)
+                LOGGER.info(f"  Found target station {station_id} at index {idx}")
+        
+        if not target_indices:
+            LOGGER.warning(f"Basin {basin_id}: No target stations found in station order for {spatial_test_mode}")
+            return station_data
+        
+        # Amplify rainfall (assume DRP is the first variable, index 0)
+        # station_data shape: [time, station, variable]
+        rainfall_var_idx = 0  # Assuming DRP (rainfall) is the first variable
+        
+        for station_idx in target_indices:
+            # Amplify rainfall by 2x at target stations
+            original_rain = modified_station_data[:, station_idx, rainfall_var_idx].copy()
+            modified_station_data[:, station_idx, rainfall_var_idx] *= 4.0
+            amplified_rain = modified_station_data[:, station_idx, rainfall_var_idx]
+            
+            total_original = np.sum(original_rain)
+            total_amplified = np.sum(amplified_rain)
+            # LOGGER.info(f"  Station {station_order[station_idx]}: "
+            #            f"Rainfall amplified from {total_original:.2f} to {total_amplified:.2f} "
+            #            f"(factor: {total_amplified/total_original:.2f})")
+        
+        return modified_station_data
 

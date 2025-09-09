@@ -360,6 +360,7 @@ def plot_flood_events_by_basin(obs_data, pred_data, save_dir):
 def main():
     """主函数"""
     # 文件路径
+    #result_dir = Path("/home/lizilin/code/torchhydro/results/events_train_3h/regional_weighted_mse_loss")
     result_dir = Path("/home/lizilin/code/torchhydro/results/gnn_experiment/songliao_3h_test_")
     obs_file = result_dir / "epoch60flow_obs.nc"
     pred_file = result_dir / "epoch60flow_pred.nc"

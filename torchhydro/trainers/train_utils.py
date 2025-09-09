@@ -1150,7 +1150,7 @@ def varied_length_collate_fn(batch):
 
 def gnn_collate_fn(batch):
     """
-    Custom collate function for GNN datasets that handles variable-sized graphs
+    Custom collate function for GNN datasets that creates a single large graph
     
     Each sample in batch is a tuple: (sxc, y, edge_index, edge_weight)
     where:
@@ -1162,8 +1162,13 @@ def gnn_collate_fn(batch):
     Returns:
     --------
     list
-        [batched_sxc, batched_y, batched_edge_index, batched_edge_weight]
-        where batched_sxc has shape [batch_size, max_num_nodes, seq_length, feature_dim]
+        [batched_sxc, batched_y, batched_edge_index, batched_edge_weight, batch_vector]
+        where:
+        - batched_sxc: [total_nodes, seq_length, feature_dim] - concatenated node features
+        - batched_y: [batch_size, forecast_length, output_dim] - stacked targets
+        - batched_edge_index: [2, total_edges] - global edge indices with offsets
+        - batched_edge_weight: [total_edges] - concatenated edge weights
+        - batch_vector: [total_nodes] - batch assignment for each node
     """
     import torch
     
@@ -1176,50 +1181,124 @@ def gnn_collate_fn(batch):
     # Batch the target values (y) - these should have the same shape
     batched_y = torch.stack(y_list, dim=0)  # [batch_size, forecast_length, output_dim]
 
-    # Find the maximum number of nodes in this batch
-    max_num_nodes = max(sxc.shape[0] for sxc in sxc_list)
+    # Concatenate all node features directly (no padding)
+    batched_sxc = torch.cat(sxc_list, dim=0)  # [total_nodes, seq_length, feature_dim]
 
-    # Get dimensions
-    batch_size = len(sxc_list)
-    seq_length = sxc_list[0].shape[1]
-    feature_dim = sxc_list[0].shape[2]
-
-    # Create padded tensor for node features
-    batched_sxc = torch.zeros(batch_size, max_num_nodes, seq_length, feature_dim)
-
-    # Create batched edge indices and weights
-    # For each graph in the batch, we need to offset node indices
+    # Create batched edge indices and weights with proper offsets
     batched_edge_index = []
     batched_edge_weight = []
     batch_vector = []
     node_offset = 0
+    
     for i, (sxc, edge_index, edge_weight) in enumerate(zip(sxc_list, edge_index_list, edge_weight_list)):
         num_nodes = sxc.shape[0]
-        # Fill the padded tensor with actual node features
-        batched_sxc[i, :num_nodes] = sxc
-        # For edge indices, we need to offset by node_offset to make them unique across batch
+        
+        # Process edge indices with offset
         if edge_index.numel() > 0:
+            # Validate edge indices
             if edge_index.max() >= num_nodes:
                 print(f"Warning: Graph {i} has edge indices {edge_index.max().item()} >= num_nodes {num_nodes}")
                 valid_mask = (edge_index[0] < num_nodes) & (edge_index[1] < num_nodes)
                 edge_index = edge_index[:, valid_mask]
                 edge_weight = edge_weight[valid_mask]
+            
+            # Apply offset to create global node indices
             if edge_index.numel() > 0:
                 offset_edge_index = edge_index + node_offset
                 batched_edge_index.append(offset_edge_index)
                 batched_edge_weight.append(edge_weight)
-        # batch_vector: for each node in this graph, assign batch index i
+        
+        # Create batch vector: assign batch index i to all nodes in this graph
         batch_vector.append(torch.full((num_nodes,), i, dtype=torch.long))
+        
+        # Update offset for next graph
         node_offset += num_nodes
-    # Concatenate edge indices and weights if they exist
+    
+    # Concatenate all edge indices and weights
     if batched_edge_index:
         batched_edge_index = torch.cat(batched_edge_index, dim=1)  # [2, total_edges]
         batched_edge_weight = torch.cat(batched_edge_weight, dim=0)  # [total_edges]
     else:
         batched_edge_index = torch.empty((2, 0), dtype=torch.long)
         batched_edge_weight = torch.empty(0)
+    
+    # Concatenate batch vectors
     batch_vector = torch.cat(batch_vector, dim=0)  # [total_nodes]
+    
     return [batched_sxc, batched_y, batched_edge_index, batched_edge_weight, batch_vector]
+
+# def gnn_collate_fn(batch):
+#     """
+#     Custom collate function for GNN datasets that handles variable-sized graphs
+    
+#     Each sample in batch is a tuple: (sxc, y, edge_index, edge_weight)
+#     where:
+#     - sxc: [num_stations_i, seq_length, feature_dim] (variable num_stations)  
+#     - y: [forecast_length, output_dim]
+#     - edge_index: [2, num_edges_i] (variable num_edges)
+#     - edge_weight: [num_edges_i] (variable num_edges)
+    
+#     Returns:
+#     --------
+#     list
+#         [batched_sxc, batched_y, batched_edge_index, batched_edge_weight]
+#         where batched_sxc has shape [batch_size, max_num_nodes, seq_length, feature_dim]
+#     """
+#     import torch
+    
+#     if len(batch) == 0:
+#         return []
+    
+#     # Unpack the batch
+#     sxc_list, y_list, edge_index_list, edge_weight_list = zip(*batch)
+
+#     # Batch the target values (y) - these should have the same shape
+#     batched_y = torch.stack(y_list, dim=0)  # [batch_size, forecast_length, output_dim]
+
+#     # Find the maximum number of nodes in this batch
+#     max_num_nodes = max(sxc.shape[0] for sxc in sxc_list)
+
+#     # Get dimensions
+#     batch_size = len(sxc_list)
+#     seq_length = sxc_list[0].shape[1]
+#     feature_dim = sxc_list[0].shape[2]
+
+#     # Create padded tensor for node features
+#     batched_sxc = torch.zeros(batch_size, max_num_nodes, seq_length, feature_dim)
+
+#     # Create batched edge indices and weights
+#     # For each graph in the batch, we need to offset node indices
+#     batched_edge_index = []
+#     batched_edge_weight = []
+#     batch_vector = []
+#     node_offset = 0
+#     for i, (sxc, edge_index, edge_weight) in enumerate(zip(sxc_list, edge_index_list, edge_weight_list)):
+#         num_nodes = sxc.shape[0]
+#         # Fill the padded tensor with actual node features
+#         batched_sxc[i, :num_nodes] = sxc
+#         # For edge indices, we need to offset by node_offset to make them unique across batch
+#         if edge_index.numel() > 0:
+#             if edge_index.max() >= num_nodes:
+#                 print(f"Warning: Graph {i} has edge indices {edge_index.max().item()} >= num_nodes {num_nodes}")
+#                 valid_mask = (edge_index[0] < num_nodes) & (edge_index[1] < num_nodes)
+#                 edge_index = edge_index[:, valid_mask]
+#                 edge_weight = edge_weight[valid_mask]
+#             if edge_index.numel() > 0:
+#                 offset_edge_index = edge_index + node_offset
+#                 batched_edge_index.append(offset_edge_index)
+#                 batched_edge_weight.append(edge_weight)
+#         # batch_vector: for each node in this graph, assign batch index i
+#         batch_vector.append(torch.full((num_nodes,), i, dtype=torch.long))
+#         node_offset += num_nodes
+#     # Concatenate edge indices and weights if they exist
+#     if batched_edge_index:
+#         batched_edge_index = torch.cat(batched_edge_index, dim=1)  # [2, total_edges]
+#         batched_edge_weight = torch.cat(batched_edge_weight, dim=0)  # [total_edges]
+#     else:
+#         batched_edge_index = torch.empty((2, 0), dtype=torch.long)
+#         batched_edge_weight = torch.empty(0)
+#     batch_vector = torch.cat(batch_vector, dim=0)  # [total_nodes]
+#     return [batched_sxc, batched_y, batched_edge_index, batched_edge_weight, batch_vector]
 
 
 def get_masked_tensors(variable_length_cfgs, batch, seq_first):
